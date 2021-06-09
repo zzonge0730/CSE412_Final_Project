@@ -1,0 +1,104 @@
+// This file used to analysis PDG
+#ifndef PDGANALYSIS_H
+#define PDGANALYSIS_H
+#include "PDG.h"
+//#include "PDGPrinter.h"
+
+#include "./DataFlowAnalysis.h"
+
+#include "llvm/Analysis/AliasAnalysis.h"
+
+using namespace llvm;
+
+class PDGAnalysis : public ModulePass {
+public:
+    static char ID;
+    PDGAnalysis();
+    virtual ~PDGAnalysis();
+
+    bool doInitialization(Module &M) override;
+    void getAnalysisUsage(AnalysisUsage &AU) const override;
+    void releaseMemory() override;
+    bool runOnModule(Module &M) override;
+
+    PDG * getFunctionPDG(Function &F);
+    PDG * getPDG(void);
+
+private:
+    Module *M;
+    PDG *programDependenceGraph;
+    std::unordered_map<Function *, PDG *> functionToFDGMap;
+    DataFlowAnalysis dfAna;
+    bool enableReachAnalysis;
+    bool dumpPDG;
+    //PDGPrinter printer;
+    PDG * constructFunctionDGFromAnalysis(Function &F);
+    PDG * constructPDGFromAnalysis(Module &M);
+
+    void trimDGUsingCustomAliasAnalysis(PDG *pdg);
+
+    void constructEdgesFromUseDefs(PDG *pdg);
+
+    void constructEdgesFromAliases(PDG *pdg, Module &M);
+    void constructEdgesFromAliasesForFunction(PDG *pdg, Function &F);
+
+    void constructEdgesFromControl(PDG *pdg, Module &M);
+    void constructEdgesFromControlForFunction(PDG *pdg, Function &F);
+
+    void constructEdgesFromSequence(PDG *pdg, Module &M);
+    void constructEdgesFromSequenceForFunction(PDG *pdg, Function &F);
+
+    void iteratorInstForStore(PDG *pdg, Function &F, AliasAnalysis &AA, DataFlowResult * dfRes, StoreInst * store);
+    void iteratorInstForLoad(PDG *pdg, Function &F, AliasAnalysis &AA, DataFlowResult * dfRes, LoadInst * load);
+    void iteratorInstForCall(PDG *pdg, Function &F, AliasAnalysis &AA, DataFlowResult * dfRes, CallInst * call);
+
+    bool isActualCode(CallInst *call);
+
+    void addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, StoreInst *store, bool flag);
+    void addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, LoadInst *load, bool flag);
+    void addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, CallInst *otherCall);
+    
+
+    template<class InstI, class InstJ>
+    void addEdgeFromMemoryAlias(PDG *pdg, Function &F, AliasAnalysis &AA, InstI *instI, InstJ *instJ, DataDependenceType dpType) {
+        bool must = false;
+
+        //query the llvm alias analysis
+        switch(AA.alias((Value*)instI, (Value*)instJ)) {
+            case AliasAnalysis::NoAlias:
+                return;
+            case AliasAnalysis::PartialAlias:
+            case AliasAnalysis::MayAlias:
+                break;
+            case AliasAnalysis::MustAlias: 
+                pdg->addEdge((Value*)instI, (Value*)instJ)->setMemMustType(true, true, dpType);
+                return;
+        }
+        //check other alias analysis
+        //check if svf is enabled
+        // if (this->enableSVF) {
+        //     //if SVF is enabled
+        //     switch(SVFIntegration::alias((Value*)instI, (Value*)instJ)) {
+        //         case NoAlias:
+        //             return;
+        //         case PartialAlias:
+        //         case MayAlias:
+        //             break;
+        //         case MustAlias: 
+        //             must = true;
+        //             break;
+        //     }
+        // }
+
+        //there is a dependence
+        pdg->addEdge((Value*)instI, (Value*)instJ)->setMemMustType(true, must, dpType);
+    }
+};
+
+#endif
+
+
+
+
+
+
