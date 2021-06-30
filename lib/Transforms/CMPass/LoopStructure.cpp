@@ -140,7 +140,7 @@ bool LoopStructure::isLoopInvariant(Value * value) const {
             return true;
         }
 
-        return this->isContainedInstructionLoopInvariant(inst)
+        return this->isContainedInstructionLoopInvariant(inst);
     }
 
     //check if value is an argument
