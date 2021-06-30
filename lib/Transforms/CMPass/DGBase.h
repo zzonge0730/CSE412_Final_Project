@@ -837,9 +837,10 @@ std::string DGEdgeBase<T, SubT>::toString() {
     if (this->isControlDependence()) return "CTRL";
     std::string edgeStr;
     llvm::raw_string_ostream ros(edgeStr);
-    ros << this->dataDepToString();
+    ros << "^^^" << this->dataDepToString();
     ros << (must ? "(must)" : "(may)");
     ros << (memory ? "from memory" : " ");
+    ros << "\n";
     ros.flush();
     return edgeStr;
 }

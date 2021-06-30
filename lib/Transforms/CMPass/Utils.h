@@ -8,13 +8,12 @@
 
 
 
-namespace llvm {
-    class BranchInst;
-    class CallInst;
-    class LLVMContext;
-    class raw_ostream;
-}
+using namespace llvm;
 
-bool IsSafeCheckCall(llvm::CallInst *CI);
+bool IsSafeCheckCall(CallInst *CI);
+bool IsSafeCheckFun(StringRef funcName);
+
+bool IsEmittingInst(Instruction &I);
+bool IsMemAccessInst(Instruction &I);
 
 #endif

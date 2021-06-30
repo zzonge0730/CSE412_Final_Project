@@ -52,6 +52,13 @@ public:
     // const InstructionVec &getOnlySafeCheck(llvm::Function *F) const {
     //     return SafeCheckInstructionsThemselves.at(F);
     // }
+    // InstructionVec& getOnlySafeCheck(Function *F) {
+    //     return SafeCheckInstructionsThemselves.at(F);
+    // }
+
+    // std::set<Instruction *> getSafeCheckSet() {
+    //     return SafeCheckSet;
+    // }
 
     // Searches the given basic block for a call instruction that corresponds to
     // a safe check
@@ -73,6 +80,7 @@ private:
 
     //All safe check themselves
     std::map<llvm::Function*, InstructionVec> SafeCheckInstructionsThemselves;
+    //std::set<Instruction *> SafeCheckSet;
 
     //A map of all instructions required by a given safe check branch
     std::map<llvm::Instruction*, InstructionSet> InstructionsBySafeCheck;

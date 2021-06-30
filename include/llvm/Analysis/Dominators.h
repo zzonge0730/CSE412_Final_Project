@@ -348,22 +348,22 @@ public:
 
   /// Get all nodes dominated by R, including R itself. Return true on success.
   void getDescendants(NodeT *R, SmallVectorImpl<NodeT *> &Result) const {
-    errs() << "getDescendants---351\n";
+    //errs() << "getDescendants---351\n";
     const DomTreeNodeBase<NodeT> *RN = getNode(R);
     SmallVector<const DomTreeNodeBase<NodeT> *, 8> WL;
     WL.push_back(RN);
     Result.clear();
-    errs() << "getDescendants---356\n";
+    //errs() << "getDescendants---356\n";
     while (!WL.empty()) {
       const DomTreeNodeBase<NodeT> *N = WL.pop_back_val();
-      errs() << "getDescendants---359\n";
+      //errs() << "getDescendants---359\n";
       if (N == nullptr || N == NULL) continue;
       Result.push_back(N->getBlock());
-      errs() << "getDescendants-361\n";
+      //errs() << "getDescendants-361\n";
       WL.append(N->begin(), N->end());
-      errs() << "getDescendants-363\n";
+      //errs() << "getDescendants-363\n";
     }
-    errs() << "getDescendants---362\n";
+    //errs() << "getDescendants---362\n";
   }
 
   /// properlyDominates - Returns true iff A dominates B and A != B.

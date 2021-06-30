@@ -247,9 +247,9 @@ void PDGAnalysis::constructEdgesFromAliases(PDG *pdg, Module &M) {
 
 void PDGAnalysis::constructEdgesFromAliasesForFunction(PDG *pdg, Function &F) {
     //fetch the alias analysis
-    errs() << "---PDGAnalysis--230\n";
+    //errs() << "---PDGAnalysis--230\n";
     auto &AA = getAnalysis<AliasAnalysis>();
-    errs() << "---PDGAnalysis--232\n";
+    //errs() << "---PDGAnalysis--232\n";
     //run the reachable analysis
     auto onlyMemoryInstructionFilter = [](Instruction * i) -> bool {
         if (isa<LoadInst>(i)) return true;
@@ -259,27 +259,27 @@ void PDGAnalysis::constructEdgesFromAliasesForFunction(PDG *pdg, Function &F) {
 
         return false;
     };
-    errs() << "---PDGAnalysis--242\n";
+    //errs() << "---PDGAnalysis--242\n";
     auto dfRes = this->enableReachAnalysis ? this->dfAna.runReachableAnalysis(&F, onlyMemoryInstructionFilter) : this->dfAna.getFullSets(&F);
-    errs() << "---PDGAnalysis--244\n";
+    //errs() << "---PDGAnalysis--244\n";
     for (auto &BB : F) {
         for (auto &Inst : BB) {
             if (auto store = dyn_cast<StoreInst>(&Inst)) {
-                errs() << "---PDGAnalysis--248\n";
+                //errs() << "---PDGAnalysis--248\n";
                 iteratorInstForStore(pdg, F, AA, dfRes, store);
-                errs() << "---PDGAnalysis--250\n";
+                //errs() << "---PDGAnalysis--250\n";
             } else if (auto load = dyn_cast<LoadInst>(&Inst)) {
-                errs() << "---PDGAnalysis--252\n";
+                //errs() << "---PDGAnalysis--252\n";
                 iteratorInstForLoad(pdg, F, AA, dfRes, load);
-                errs() << "---PDGAnalysis--254\n";
+                //errs() << "---PDGAnalysis--254\n";
             } else if (auto call = dyn_cast<CallInst>(&Inst)) {
-                errs() << "---PDGAnalysis--256\n";
+                //errs() << "---PDGAnalysis--256\n";
                 iteratorInstForCall(pdg, F, AA, dfRes, call);
-                errs() << "---PDGAnalysis--258\n";
+                //errs() << "---PDGAnalysis--258\n";
             }
         }
     }
-    errs() << "---PDGAnalysis--262\n";
+    //errs() << "---PDGAnalysis--262\n";
     //free memory
     delete dfRes;
 
@@ -291,7 +291,7 @@ void PDGAnalysis::constructEdgesFromControl(PDG *pdg, Module &M) {
     for (auto &F : M) {
         //fetch the next function with a body
         if (F.empty()) continue;
-        errs() << "--PDGAnalysis-277: " << F.getName() << "\n";
+        //errs() << "--PDGAnalysis-277: " << F.getName() << "\n";
         //compute the control dependences of the function based on its post-dominator tree
         this->constructEdgesFromControlForFunction(pdg, F);
     }
@@ -299,29 +299,29 @@ void PDGAnalysis::constructEdgesFromControl(PDG *pdg, Module &M) {
 
 void PDGAnalysis::constructEdgesFromControlForFunction(PDG *pdg, Function &F) {
     assert(pdg != nullptr);
-    errs() << "---PDGAnalysis--285\n";
+    //errs() << "---PDGAnalysis--285\n";
     //fetch the post-dominator tree of the function
     //auto& PDT = getAnalysis<PostDominatorTree>();
     DominatorTree * DT = &getAnalysis<DominatorTree>(F);
-    errs() << "---PDGAnalysis---288\n";
+    //errs() << "---PDGAnalysis---288\n";
     //auto &postDomTree = PDT.getPostDomTree();
-    errs() << "---PDGAnalysis--290\n";
+    //errs() << "---PDGAnalysis--290\n";
     for (auto &B : F) {
         //fetch the basic blocks post-dominated by the current one.
         SmallVector<BasicBlock *, 10> dominatedBBs;
         //postDomTree.getDescendants(&B, dominatedBBs);
-        errs() << "---PDGAnalysis-300-1\n";
+        //errs() << "---PDGAnalysis-300-1\n";
         DT->getDescendants(&B, dominatedBBs);
-        errs() << "---PDGAnalysis--293\n";
+        //errs() << "---PDGAnalysis--293\n";
         //for each basic block that B post dominates,  check if B doesn't strictly post dominate its predecessor
         //if it does not, then there is a control dependence from the predecessor to B
-        errs() << "dominatedBBs size: " << dominatedBBs.size() << "\n";
+        //errs() << "dominatedBBs size: " << dominatedBBs.size() << "\n";
         for (auto dominatedBB : dominatedBBs) {
-            errs() << "---PDGAnalysis---306\n";
+            //errs() << "---PDGAnalysis---306\n";
             for (auto predBB : make_range(pred_begin(dominatedBB), pred_end(dominatedBB))) {
                 //fecth the terminator of the predecessor
                 auto controlTerminator = predBB->getTerminator();
-                errs() << "---PDGAnalysis--300\n";
+                //errs() << "---PDGAnalysis--300\n";
                 //check if the predecessor terminator is a conditional branch.
                 //This is necessary to avoid adding incorrect control dependences 
                 //between basic blocks of a loop that has no exit blocks
@@ -334,24 +334,24 @@ void PDGAnalysis::constructEdgesFromControlForFunction(PDG *pdg, Function &F) {
                 //in this case, if we don't check that the terminator of predBB is a conditional branch
                 //we would add a control dependence from branch %B to i
                 if (controlTerminator->getNumSuccessors() == 1) continue;
-                errs() << "---PDGAnalysis--313\n";
+                //errs() << "---PDGAnalysis--313\n";
                 //check if B strictly post-dominates predBB
                 //if (postDomTree.properlyDominates(&B, predBB)) continue;
                 if (DT->properlyDominates(&B, predBB)) continue;
-                errs() << "---PDGAnalysis--316\n";
+                //errs() << "---PDGAnalysis--316\n";
                 //add the control dependences
                 for (auto &I : B) {
                     auto edge = pdg->addEdge((Value*)controlTerminator, (Value*)&I);
-                    errs() << "---PDGAnalysis--330\n";
+                    //errs() << "---PDGAnalysis--330\n";
                     edge->setControl(true);
                 }
-                errs() << "---PDGAnalysis-333\n";
+                //errs() << "---PDGAnalysis-333\n";
             }
-            errs() << "---PDGAnalysis-335\n";
+            //errs() << "---PDGAnalysis-335\n";
         }
-        errs() << "---PDGAnalysis-339\n";
+        //errs() << "---PDGAnalysis-339\n";
     }
-    errs() << "---PDGAnalysis--325\n";
+    //errs() << "---PDGAnalysis--325\n";
     auto getControlProducers = [&](Value * V) -> std::unordered_set<Value *> {
         std::unordered_set<Value *> controlProducers;
         auto node = pdg->fetchNode(V);
@@ -370,7 +370,7 @@ void PDGAnalysis::constructEdgesFromControlForFunction(PDG *pdg, Function &F) {
             //locate control producers of incoming blocks to PHIs
             //where the incoming value doesn't reside in incoming block
             std::unordered_set<Value *> controlProducers;
-            errs() << "---PDGAnalysis--344\n";
+            //errs() << "---PDGAnalysis--344\n";
             for (auto i = 0; i < phi.getNumIncomingValues(); i++) {
                 auto incomingValue = phi.getIncomingValue(i);
                 if (!incomingValue) continue;
@@ -385,7 +385,7 @@ void PDGAnalysis::constructEdgesFromControlForFunction(PDG *pdg, Function &F) {
 
             }
             if (controlProducers.size() == 0) continue;
-            errs() << "---PDGAnalysis--359\n";
+            //errs() << "---PDGAnalysis--359\n";
             //determine which of these control producers do not have a control edge to the PHI already
             //add a control edge from those producers to the PHI
             std::unordered_set<Value *> currentControlProducersOnPHI = getControlProducers(&phi);
@@ -485,20 +485,20 @@ void PDGAnalysis::iteratorInstForCall(PDG *pdg, Function &F, AliasAnalysis &AA, 
 
     //identify all dependences with @call
     for (auto I : dfRes->OUT(call)) {
-        errs() << "iteratorInstForCall-475\n";
+        //errs() << "iteratorInstForCall-475\n";
         if (I == nullptr || I == NULL) errs() << "iteratorInstForCall I is null\n";
         //check store
         if (auto store = dyn_cast<StoreInst>(I)) {
             addEdgeFromFunctionModRef(pdg, F, AA, call, store, true);
             continue;
         }
-        errs() << "iteratorInstForCall-481\n";
+        //errs() << "iteratorInstForCall-481\n";
         //check load
         if (auto load = dyn_cast<LoadInst>(I)) {
             addEdgeFromFunctionModRef(pdg, F, AA, call, load, true);
             continue;
         }
-        errs() << "iteratorInstForCall-487\n";
+        //errs() << "iteratorInstForCall-487\n";
         //checkcalls
         if (auto othercall = dyn_cast<CallInst>(I)) {
             if (!this->isActualCode(othercall)) continue;
@@ -610,9 +610,11 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
         case AliasAnalysis::NoModRef:
             return;
         case AliasAnalysis::Ref:
+            //@call may read memory locations written by @otherCall
             bv[0] = true;
             break;
         case AliasAnalysis::Mod:
+            //@call may write a memory location that can be read or written by @otherCall
             bv[1] = true;
             switch (AA.getModRefInfo(otherCall, call)) {
                 case AliasAnalysis::NoModRef:
@@ -629,6 +631,7 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
             }
             break;
         case AliasAnalysis::ModRef:
+            //@call may read or write a memory location that can be written by @otherCall
             bv[2] = true;
             break;
 
@@ -658,20 +661,46 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
 
     //there is a dependence
     if (makeRefEdge) {
+        //@call reads a memory location that @otherCall writes.
+        //The sequence of execution is @call and then @otherCall.
+        //Hence, there is a WAR dependence from @call to @otherCall
         pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_WAR);
+        
+        //check the unique case that @call and @otherCall are the same.
+        //in this case, there is also a RAW dependence between them.
+        if (call == otherCall) {
+            pdg->addEdge((Value*)otherCall, (Value*)call)->setMemMustType(true, false, DG_DATA_RAW);
+        }
     } else if (makeModEdge) {
         //dependency of Mod result between call and otherCall is depend on the reverse getModRefInfo result
         if (reverseRefEdge) {
             pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_RAW);
+            //check the unique case that @call and @otherCall are the same.
+            //in this case, there is also a WAR dependence between them.
+            if (call == otherCall) {
+                pdg->addEdge((Value*)otherCall, (Value*)call)->setMemMustType(true, false, DG_DATA_WAR);
+            }
         } else if (reverseModEdge) {
             pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_WAW);
         } else if (reverseModRefEdge) {
             pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_RAW);
             pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_WAW);
+
+            //check the unique case that @call and @otherCall are the same.
+            //in this case, there is also a WAR dependence between them.
+            if (call == otherCall) {
+                pdg->addEdge((Value*)otherCall, (Value*)call)->setMemMustType(true, false, DG_DATA_WAR);
+            }
         }
     } else if (makeModRefEdge) {
         pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_WAR);
         pdg->addEdge((Value *)call, (Value *)otherCall)->setMemMustType(true, false, DG_DATA_WAW);
+
+        //check the unique case that @call and @otherCall are the same.
+        //in this case, there is also a RAW dependence between them.
+        if (call == otherCall) {
+            pdg->addEdge((Value*)otherCall, (Value*)call)->setMemMustType(true, false, DG_DATA_RAW);
+        }
     }
 }
 

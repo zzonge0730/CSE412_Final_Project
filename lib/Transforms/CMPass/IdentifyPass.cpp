@@ -219,6 +219,7 @@ void IdentifyPass::findInstructions(Function *F) {
             if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                 if (IsSafeCheckCall(CI)) {
                     SafeCheckInstructionsThemselves[F].push_back(&I);
+                    //SafeCheckSet.insert(&I);
                 } else {
                     OriginCodeInstructions[F].push_back(&I);
                 }
