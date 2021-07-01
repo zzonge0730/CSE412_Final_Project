@@ -24,6 +24,11 @@ template <class T> class DGNode;
 template <class T, class SubT> class DGEdgeBase;
 template <class T> class DGEdge;
 
+//Criticism is a PDG edge with a bool value to differentiate loop-carried
+//from intra-interation edges. Also specify type of dep(mem/reg/ctrl);
+typedef DGEdge<Value> Criticism;
+typedef std::set<Criticism *> Criticisms;
+
 enum DataDependenceType {
     DG_DATA_NONE,
     DG_DATA_RAW,
@@ -875,5 +880,6 @@ llvm::raw_ostream & DGNode<T>::print(llvm::raw_ostream &O) {
     theT->print(O);
     return O;
 } 
+
 
 #endif

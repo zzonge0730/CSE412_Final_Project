@@ -7,10 +7,15 @@
 #include "PDG.h"
 #include "PDGAnalysis.h"
 #include "DominatorSummary.h"
-#include "LoopEnviroment.h"
+#include "LoopEnvironment.h"
 #include "LoopSummary.h"
+#include "SCCDAG.h"
+#include "InvariantManager.h"
+#include "InductionVariables.h"
+#include "LoopGoverningIVAttribution.h"
 
 #include <unordered_set>
+#include <utility>
 
 enum LoopDependenceInfoOptimization {
     MEMORY_CLONING_ID,
@@ -24,7 +29,7 @@ enum Transformation {
 
 class LoopDependenceInfo {
 public:
-    LoopEnviroment * loopEnviroment;
+    LoopEnvironment * loopEnviroment;
 
     //parallelization options
     uint32_t DOALLChunkSize;
@@ -37,11 +42,21 @@ public:
 
     LoopDependenceInfo() = delete;
 
+    uint64_t getID(void) const;//return the ID of the loop
+
+    //enable all transformations
+    void enableAllTransformations(void);
+
+    //return the object that describes the loop in terms of induction variables,
+    //trip count, and control structure(e.g., latches, header)
+    LoopStructure * getLoopStructure(void) const;
+
+
 
 private:
     std::set<Transformation> enabledTransformations;
     std::unordered_set<LoopDependenceInfoOptimization> enabledOpts;
-
+    bool areLoopAwareAnalysisEnabled;
     //dependence graph of the loop
     //this graph does not include instructions outside the loop
     //(no external dependences are included)
@@ -53,6 +68,17 @@ private:
     //each loop is described in terms of its control structure
     //(latch, header)
     LoopSummary loopSummary;
+
+    void fetchLoopAndBBInfo(Loop * loop, ScalarEvolution& se);
+
+    std::pair<PDG *, SCCDAG *> createDGsForLoop(Loop* loop, PDG* functionPDG,
+    DominatorSummary& ds, ScalarEvolution& se);
+
+    InvariantManager* invariantManager;
+    InductionVariableManager* inductionVariables;
+    SCCDAGAttrs* sccdagAttrs;
+    LoopIterationDomainSpaceAnalysis* domainSpaceAnalysis;
+    LoopGoverningIVAttribution* loopGoverningIVAttribution;
 
 
 };

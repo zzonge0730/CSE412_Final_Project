@@ -15,11 +15,11 @@
 
 using namespace llvm;
 
-class LoopEnviroment {
+class LoopEnvironment {
 public:
-    LoopEnviroment(PDG * pdg, std::vector<BasicBlock *>& exitBlocks);
+    LoopEnvironment(PDG * pdg, std::vector<BasicBlock *>& exitBlocks);
 
-    LoopEnviroment() = delete;
+    LoopEnvironment() = delete;
 
     iterator_range<std::vector<Value *>::iterator> getProducers(void);
     iterator_range<std::set<int>::iterator> getEnvIndicesOfLiveInVars(void);

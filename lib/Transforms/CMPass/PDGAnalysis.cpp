@@ -13,6 +13,7 @@
 
 #include <utility>
 #include <string>
+#include <unordered_set>
 
 using namespace llvm;
 
@@ -705,3 +706,122 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
 }
 
 
+bool PDGAnalysis::isTheLibraryFunctionPure(Function * libF) {
+    if (PDGAnalysis::libraryFunction.count(libF->getName())) {
+        return true;
+    }
+    return false;
+}
+
+// http://www.cplusplus.com/reference/clibrary/ and https://github.com/SVF-tools/SVF/blob/master/lib/Util/ExtAPI.cpp
+const StringSet<> PDGAnalysis::libraryFunction {
+    // ctype.h
+  "isalnum",
+  "isalpha",
+  "isblank",
+  "iscntrl",
+  "isdigit",
+  "isgraph",
+  "islower",
+  "isprint",
+  "ispunct",
+  "isspace",
+  "isupper",
+  "isxdigit",
+  "tolower",
+  "toupper",
+
+  // math.h
+  "cos",
+  "sin",
+  "tan",
+  "acos",
+  "asin",
+  "atan",
+  "atan2",
+  "cosh",
+  "sinh",
+  "tanh",
+  "acosh",
+  "asinh",
+  "atanh",
+  "exp",
+  "ldexp",
+  "log",
+  "log10",
+  "exp2",
+  "expm1",
+  "ilogb",
+  "log1p",
+  "log2",
+  "logb",
+  "scalbn",
+  "scalbln",
+  "pow",
+  "sqrt",
+  "cbrt",
+  "hypot",
+  "erf",
+  "erfc",
+  "tgamma",
+  "lgamma",
+  "ceil",
+  "floor",
+  "fmod",
+  "trunc",
+  "round",
+  "lround",
+  "llround",
+  "nearbyint",
+  "remainder",
+  "copysign",
+  "nextafter",
+  "nexttoward",
+  "fdim",
+  "fmax",
+  "fmin",
+  "fabs",
+  "abs",
+  "fma",
+  "fpclassify",
+  "isfinite",
+  "isinf",
+  "isnan",
+  "isnormal",
+  "signbit",
+  "isgreater",
+  "isgreaterequal",
+  "isless",
+  "islessequal",
+  "islessgreater",
+  "isunordered",
+
+  // time.h
+  "clock",
+  "difftime",
+
+  // wctype.h
+  "iswalnum",
+  "iswalpha",
+  "iswblank",
+  "iswcntrl",
+  "iswdigit",
+  "iswgraph",
+  "iswlower",
+  "iswprint",
+  "iswpunct",
+  "iswspace",
+  "iswupper",
+  "iswxdigit",
+  "towlower",
+  "towupper",
+  "iswctype",
+  "towctrans",
+
+  "atoi",
+  "atoll",
+  "exit",
+  "strcmp",
+  "strncmp",
+  "rand_r"
+};

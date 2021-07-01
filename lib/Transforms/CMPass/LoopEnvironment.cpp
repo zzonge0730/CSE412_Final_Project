@@ -1,9 +1,9 @@
-#include "LoopEnviroment.h"
+#include "LoopEnvironment.h"
 #include "llvm/IR/Instructions.h"
 
 #include <unordered_set>
 
-LoopEnviroment::LoopEnviroment(PDG * pdg, std::vector<BasicBlock *>& exitBlocks) {
+LoopEnvironment::LoopEnvironment(PDG * pdg, std::vector<BasicBlock *>& exitBlocks) {
     //initialize the enviroment of the loop
     for (auto nodeI : pdg->getExternalNodePairs()) {
         //fetch the live in/out variable
@@ -60,7 +60,7 @@ LoopEnviroment::LoopEnviroment(PDG * pdg, std::vector<BasicBlock *>& exitBlocks)
     }
     
 }
-uint64_t LoopEnviroment::addLiveInValue(Value * newLiveInValue, const std::unordered_set<Instruction *>& consumers) {
+uint64_t LoopEnvironment::addLiveInValue(Value * newLiveInValue, const std::unordered_set<Instruction *>& consumers) {
     //add the live-in value
     uint64_t newIndex = this->addLiveInProducer(newLiveInValue);
 
@@ -71,15 +71,15 @@ uint64_t LoopEnviroment::addLiveInValue(Value * newLiveInValue, const std::unord
     return newIndex;
 }
 
-bool LoopEnviroment::isProducer(Value * producer) const {
+bool LoopEnvironment::isProducer(Value * producer) const {
     return producerIndexMap.find(producer) != producerIndexMap.end();
 }
 
-uint64_t LoopEnviroment::addLiveInProducer(Value *producer) {
+uint64_t LoopEnvironment::addLiveInProducer(Value *producer) {
     uint64_t newIndex = addProducer(producer, true);
     return newIndex;
 }
-uint64_t LoopEnviroment::addProducer(Value *producer, bool liveIn) {
+uint64_t LoopEnvironment::addProducer(Value *producer, bool liveIn) {
     //make sure @producer isn't aready part of the enviroment
     uint64_t index = 0;
     for (auto pro : this->envProducers) {
@@ -103,39 +103,39 @@ uint64_t LoopEnviroment::addProducer(Value *producer, bool liveIn) {
     return envIndex;
 
 }
-void LoopEnviroment::addLiveOutProducer(Value * producer) {
+void LoopEnvironment::addLiveOutProducer(Value * producer) {
     addProducer(producer, false);
 }
-int LoopEnviroment::indexOfProducer(Value * producer) {
+int LoopEnvironment::indexOfProducer(Value * producer) {
     return this->producerIndexMap[producer];
 }
 
-iterator_range<std::vector<Value *>::iterator> LoopEnviroment::getProducers(void) {
+iterator_range<std::vector<Value *>::iterator> LoopEnvironment::getProducers(void) {
     return make_range(envProducers.begin(), envProducers.end());
 }
-iterator_range<std::set<int>::iterator> LoopEnviroment::getEnvIndicesOfLiveInVars(void) {
+iterator_range<std::set<int>::iterator> LoopEnvironment::getEnvIndicesOfLiveInVars(void) {
     return make_range(liveInIndices.begin(), liveInIndices.end());
 }
-iterator_range<std::set<int>::iterator> LoopEnviroment::getEnvIndicesOfLiveOutVars(void) {
+iterator_range<std::set<int>::iterator> LoopEnvironment::getEnvIndicesOfLiveOutVars(void) {
     return make_range(liveOutIndices.begin(), liveOutIndices.end());
 }
 
-uint64_t LoopEnviroment::size(void) const {
+uint64_t LoopEnvironment::size(void) const {
     return envProducers.size() + (hasExitBlockEnv ? 1 : 0);
 }
 
-int64_t LoopEnviroment::indexOfExitBlockTaken(void) const {
+int64_t LoopEnvironment::indexOfExitBlockTaken(void) const {
     return hasExitBlockEnv ? envProducers.size() : -1;
 }
 
-Type * LoopEnviroment::typeOfEnviromentLocation(uint64_t index) const {
+Type * LoopEnvironment::typeOfEnviromentLocation(uint64_t index) const {
     if (index < envProducers.size()) {
         return this->envProducers[index]->getType();
     }
     return exitBlockType;
 }
 
-bool LoopEnviroment::isLiveIn(Value * val) const {
+bool LoopEnvironment::isLiveIn(Value * val) const {
     //check if @val belongs to the enviroment
     if (producerIndexMap.find(val) == producerIndexMap.end()) {
         return false;
@@ -148,12 +148,12 @@ bool LoopEnviroment::isLiveIn(Value * val) const {
     return isProducer(val) && (liveInIndices.find(index) != liveInIndices.end());
 }
 
-Value * LoopEnviroment::producerAT(uint64_t index) const {
+Value * LoopEnvironment::producerAT(uint64_t index) const {
     assert(index < envProducers.size());
     return envProducers[index];
 }
 
-std::set<Value *> LoopEnviroment::consumersOf(Value * producer) const {
+std::set<Value *> LoopEnvironment::consumersOf(Value * producer) const {
     std::set<Value *> s;
     if (prodConsumers.find(producer) == prodConsumers.end()) {
         return s;

@@ -7,6 +7,7 @@
 #include "./DataFlowAnalysis.h"
 
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/ADT/StringSet.h"
 
 using namespace llvm;
 
@@ -23,6 +24,8 @@ public:
 
     PDG * getFunctionPDG(Function &F);
     PDG * getPDG(void);
+
+    static bool isTheLibraryFunctionPure(Function * libraryFunction);
 
 private:
     Module *M;
@@ -93,6 +96,8 @@ private:
         //there is a dependence
         pdg->addEdge((Value*)instI, (Value*)instJ)->setMemMustType(true, must, dpType);
     }
+
+    static const StringSet<> libraryFunction;
 };
 
 #endif
