@@ -26,7 +26,7 @@ public:
     PDG * getPDG(void);
 
     static bool isTheLibraryFunctionPure(Function * libraryFunction);
-
+    static bool isTheLibraryFunctionThreadSafe(Function * libraryFunction);
 private:
     Module *M;
     PDG *programDependenceGraph;
@@ -98,6 +98,7 @@ private:
     }
 
     static const StringSet<> libraryFunction;
+    static const StringSet<> externalThreadSafeFunctions;
 };
 
 #endif

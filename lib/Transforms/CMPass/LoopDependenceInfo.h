@@ -10,12 +10,18 @@
 #include "LoopEnvironment.h"
 #include "LoopSummary.h"
 #include "SCCDAG.h"
+#include "SCCDAGAttrs.h"
 #include "InvariantManager.h"
 #include "InductionVariables.h"
 #include "LoopGoverningIVAttribution.h"
+#include "LoopCarriedDependencies.h"
+#include "LoopIterationDomainSpaceAnalysis.h"
+#include "DataFlowResult.h"
+#include "DataFlowEngine.h"
 
 #include <unordered_set>
 #include <utility>
+
 
 enum LoopDependenceInfoOptimization {
     MEMORY_CLONING_ID,
@@ -37,25 +43,48 @@ public:
     LoopDependenceInfo(PDG * pdg, Loop * loop, DominatorSummary& ds, ScalarEvolution& se);
 
     LoopDependenceInfo(PDG * pdg, Loop * loop, DominatorSummary& ds, ScalarEvolution& se,
-    uint32_t maxCores, bool enableFloatAsReal, 
-    std::unordered_set<LoopDependenceInfoOptimization> optimizations, bool enableLoopAwareDependenceAnalysis);
+    uint32_t maxCores, bool enableFloatAsReal, bool enableLoopAwareDependenceAnalysis);
 
     LoopDependenceInfo() = delete;
 
     uint64_t getID(void) const;//return the ID of the loop
 
     //enable all transformations
-    void enableAllTransformations(void);
+    //void enableAllTransformations(void);
 
     //return the object that describes the loop in terms of induction variables,
     //trip count, and control structure(e.g., latches, header)
     LoopStructure * getLoopStructure(void) const;
 
+    PDG * getLoopPDG(void) const;
 
+    ~LoopDependenceInfo();
+
+    MemoryCloningAnalysis * getMemoryCloningAnalysis(void) const;
+    LoopIterationDomainSpaceAnalysis * getLoopIterationDomainSpaceAnalysis(void) const;
+    InvariantManager * getInvariantManager(void) const;
+    SCCDAGAttrs * getSCCManager(void) const;
+    InductionVariableManager * getInductionVariableManager(void) const;
+    LoopGoverningIVAttribution * getLoopGoverningIVAttribution(void) const;
+
+    //return true if scc is fully contained in a subloop
+    //otherwise, false
+    bool isSCCContainedInSubLoop(SCC * scc) const;
+
+    bool iterateOverSubLoopsRecursively(std::function<bool (const LoopStructure& child)> funcToInvoke);
+
+    void copyParallelizationOptionsFrom(LoopDependenceInfo * otherLDI);
+
+    LoopStructure * getNestedMostLoopStructure(Instruction * I) const;
+
+    const LoopSummary& getLoopHierarchyStructures(void) const;
+
+    bool doesHaveCompileTimeKnownTripCount(void) const;
+    
+    uint64_t getCompileTimeTripCount(void) const;
 
 private:
-    std::set<Transformation> enabledTransformations;
-    std::unordered_set<LoopDependenceInfoOptimization> enabledOpts;
+
     bool areLoopAwareAnalysisEnabled;
     //dependence graph of the loop
     //this graph does not include instructions outside the loop
@@ -79,8 +108,20 @@ private:
     SCCDAGAttrs* sccdagAttrs;
     LoopIterationDomainSpaceAnalysis* domainSpaceAnalysis;
     LoopGoverningIVAttribution* loopGoverningIVAttribution;
+    MemoryCloningAnalysis * memoryCloningAnalysis;
+
+    bool compileTimeKnownTripCount;
+    uint64_t tripCount;
+
+    void removeUnnecessaryDependenciesThatCloningMemoryNegates(PDG * loopInternalDG, DominatorSummary& ds);
+
+    void removeUnnecessaryDependenciesWithThreadSafeLibraryFunctions(PDG * loopPDG, DominatorSummary& ds);
+
+    void refinePDGWithLoopAwareMemDepAnalysis(PDG * loopPDG, LoopStructure * loopStructure, LoopSummary * loopSummary,
+    LoopIterationDomainSpaceAnalysis * loopIDSA);
 
 
+    DataFlowResult * computeReachabilityFromInstructions(LoopStructure * loopStructure);
 };
 
 #endif

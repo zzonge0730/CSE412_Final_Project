@@ -4,9 +4,11 @@
 #include "LoopStructure.h"
 #include "InvariantManager.h"
 #include "SCC.h"
+#include "SCCDAG.h"
 #include "LoopEnvironment.h"
 #include "ScalarEvolutionReferencer.h"
 #include "LoopGoverningIVAttribution.h"
+
 
 #include "llvm/Analysis/ScalarEvolution.h"
 

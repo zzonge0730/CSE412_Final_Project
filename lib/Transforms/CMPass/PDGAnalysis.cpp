@@ -713,6 +713,14 @@ bool PDGAnalysis::isTheLibraryFunctionPure(Function * libF) {
     return false;
 }
 
+bool isTheLibraryFunctionThreadSafe(Function * libraryFunction) {
+    if (PDGAnalysis::externalThreadSafeFunctions.count(libraryFunction->getName())) {
+        return true;
+    }
+
+    return false;
+}
+
 // http://www.cplusplus.com/reference/clibrary/ and https://github.com/SVF-tools/SVF/blob/master/lib/Util/ExtAPI.cpp
 const StringSet<> PDGAnalysis::libraryFunction {
     // ctype.h
@@ -824,4 +832,11 @@ const StringSet<> PDGAnalysis::libraryFunction {
   "strcmp",
   "strncmp",
   "rand_r"
+};
+
+const StringSet<> PDGAnalysis::externalThreadSafeFunctions {
+    "malloc",
+    "calloc",
+    "realloc",
+    "free"
 };

@@ -1,13 +1,17 @@
 #ifndef SCCDAGATTRS_H
 #define SCCDAGATTRS_H
 
+#include "DGBase.h"
+
 #include "PDG.h"
 #include "PDGAnalysis.h"
 #include "SCCDAG.h"
+#include "SCCAttrs.h"
 #include "DominatorSummary.h"
 #include "LoopSummary.h"
 #include "AccumulatorOpInfo.h"
 #include "InductionVariables.h"
+#include "MemoryCloningAnalysis.h"
 
 #include "llvm/Analysis/ScalarEvolution.h"
 
