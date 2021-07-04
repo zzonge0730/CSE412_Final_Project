@@ -1,4 +1,5 @@
 #include "DOALL.h"
+#include "llvm/Support/CFG.h"
 
 DOALL::DOALL(Module& M) {
 
@@ -22,7 +23,7 @@ bool DOALL::apply(LoopDependenceInfo * LDI, Master& master) {
     errs() << "DOALL: Chunk Size = " << LDI->DOALLChunkSize << "\n";
 
     //generate an empty task for the parallel DOALL execution
-    DOALLTask * chunkerTask = new DOALLTask(0, this->taskSignature, this->M);
+    DOALLTask * chunkerTask = new DOALLTask(0, this->taskSignature, *this->M);
     this->addPredecessorAndSuccessorsBasicBlockToTasks(LDI, {chunkerTask});
     this->numOfTaskInstantces = LDI->getMaxCoreNumber();
 
@@ -168,19 +169,258 @@ bool DOALL::canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& cat) {
 }
 
 std::unordered_set<SCC *> DOALL::getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI, Master& cat) {
-
+    //TODO:
 }
 
 void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
+   
+    //fetch the task
+    auto task = this->tasks[0];
+
+    auto invariantManager = LDI->getInvariantManager();
+    auto loopSummary = LDI->getLoopStructure();
+    auto loopHeader = loopSummary->getHeader();
+    auto loopPreHeader = loopSummary->getPreHeader();
+    auto preheaderClone = task->getCloneOfOriginalBasicBlock(loopPreHeader);
+    auto headerClone = task->getCloneOfOriginalBasicBlock(loopHeader);
+    auto allIVInfo = LDI->getInductionVariableManager();
+
+  
+    // Hook up preheader to header to enable induction variable manipulation
+   
+    IRBuilder<> entryBuilder(task->getEntry());
+    auto temporaryBrToLoop = entryBuilder.CreateBr(headerClone);
+    entryBuilder.SetInsertPoint(temporaryBrToLoop);
+
+  
+    // Generate PHI to track progress on the current chunk
+    auto chunkCounterType = task->chunkSizeArg->getType();
+    auto chunkPHI = IVUtility::createChunkPHI(preheaderClone, headerClone, chunkCounterType, task->chunkSizeArg);
+
+  
+    // Collect clones of step size deriving values for all induction variables
+    // of the top level loop
+
+    auto clonedStepSizeMap = this->cloneIVStepValueComputation(LDI, 0, entryBuilder);
+
+    // Determine start value of the IV for the task
+    // core_start: original_start + original_step_size * core_id * chunk_size
+    for (auto ivInfo : allIVInfo->getInductionVariables(*loopSummary)) {
+        auto startOfIV = this->fetchClone(ivInfo->getStartValue());
+        auto stepOfIV = clonedStepSizeMap.at(ivInfo);
+        auto ivPHI = cast<PHINode>(fetchClone(ivInfo->getLoopEntryPHI()));
+
+        auto nthCoreOffset = entryBuilder.CreateMul(
+        stepOfIV,
+        entryBuilder.CreateZExtOrTrunc(
+            entryBuilder.CreateMul(task->coreArg, task->chunkSizeArg, "coreIdx_X_chunkSize"),
+            stepOfIV->getType()
+        ),
+        "stepSize_X_coreIdx_X_chunkSize"
+        );
+
+        auto offsetStartValue = IVUtility::offsetIVPHI(preheaderClone, ivPHI, startOfIV, nthCoreOffset);
+        ivPHI->setIncomingValueForBlock(preheaderClone, offsetStartValue);
+    }
+
     
+    // Determine additional step size from the beginning of the next core's chunk
+    // to the start of this core's next chunk
+    // chunk_step_size: original_step_size * (num_cores - 1) * chunk_size
+    
+    for (auto ivInfo : allIVInfo->getInductionVariables(*loopSummary)) {
+        auto stepOfIV = clonedStepSizeMap.at(ivInfo);
+        auto ivPHI = cast<PHINode>(fetchClone(ivInfo->getLoopEntryPHI()));
+        auto onesValueForChunking = ConstantInt::get(chunkCounterType, 1);
+        auto chunkStepSize = entryBuilder.CreateMul(
+        stepOfIV,
+        entryBuilder.CreateZExtOrTrunc(
+            entryBuilder.CreateMul(
+            entryBuilder.CreateSub(task->numCoresArg, onesValueForChunking, "numCoresMinus1"),
+            task->chunkSizeArg,
+            "numCoresMinus1_X_chunkSize"
+            ),
+            stepOfIV->getType()
+        ),
+        "stepSizeToNextChunk"
+        );
+
+        IVUtility::chunkInductionVariablePHI(preheaderClone, ivPHI, chunkPHI, chunkStepSize);
+    }
+
+    
+    // The exit condition needs to be made non-strict to catch iterating past it
+    auto loopGoverningIVAttr = LDI->getLoopGoverningIVAttribution();
+    LoopGoverningIVUtility ivUtility(loopGoverningIVAttr->getInductionVariable(), *loopGoverningIVAttr);
+    auto cmpInst = cast<CmpInst>(task->getCloneOfOriginalInstruction(loopGoverningIVAttr->getHeaderCmpInst()));
+    auto brInst = cast<BranchInst>(task->getCloneOfOriginalInstruction(loopGoverningIVAttr->getHeaderBrInst()));
+    auto basicBlockToJumpToWhenTheLoopEnds = task->getLastBlock(0);
+    ivUtility.updateConditionAndBranchToCatchIteratingPastExitValue(cmpInst, brInst, basicBlockToJumpToWhenTheLoopEnds);
+    auto updatedCmpInst = cmpInst;
+
+    // The exit condition value does not need to be computed each iteration
+    // and so the value's derivation can be hoisted into the preheader
+    // Instructions which the PDG states are independent can include PHI nodes
+    // Assert that any PHIs are invariant. Hoist one of those values (if instructions) to the preheader.
+
+    auto exitConditionValue = fetchClone(loopGoverningIVAttr->getHeaderCmpInstConditionValue());
+    if (auto exitConditionInst = dyn_cast<Instruction>(exitConditionValue)) {
+        auto &derivation = ivUtility.getConditionValueDerivation();
+        for (auto I : derivation) {
+        assert(invariantManager->isLoopInvariant(I)
+            && "DOALL exit condition value is not derived from loop invariant values!");
+
+      
+        //Fetch the clone of @I
+        auto cloneI = task->getCloneOfOriginalInstruction(I);
+
+        if (auto clonePHI = dyn_cast<PHINode>(cloneI)) {
+            auto usedValue = clonePHI->getIncomingValue(0);
+            clonePHI->replaceAllUsesWith(usedValue);
+            clonePHI->eraseFromParent();
+            cloneI = dyn_cast<Instruction>(usedValue);
+            if (!cloneI) continue;
+        }
+
+            cloneI->removeFromParent();
+            entryBuilder.Insert(cloneI);
+        }
+
+        exitConditionInst->removeFromParent();
+        entryBuilder.Insert(exitConditionInst);
+    }
+
+    /*
+    * Identify any instructions in the header that are NOT sensitive to the number of times they execute:
+    * 1) IV instructions, including the comparison and branch of the loop governing IV
+    * 2) The PHI used to chunk iterations 
+    * 3) Any PHIs of reducible variables
+    * 4) Any loop invariant instructions that belong to independent-execution SCCs
+    */
+    std::set<Instruction *> repeatableInstructions;
+
+	/*
+	 * Collect (1) by iterating the InductionVariableManager
+	 */
+    auto sccManager = LDI->getSCCManager();
+    auto sccdag = sccManager->getSCCDAG();
+    for (auto ivInfo : allIVInfo->getInductionVariables(*loopSummary)) {
+        for (auto I : ivInfo->getAllInstructions()) {
+            repeatableInstructions.insert(task->getCloneOfOriginalInstruction(I));
+        }
+    }
+    repeatableInstructions.insert(cmpInst);
+    repeatableInstructions.insert(brInst);
+
+	/*
+	 * Collect (2)
+	 */
+    repeatableInstructions.insert(chunkPHI);
+
+	/*
+	 * Collect (3) by identifying all reducible SCCs
+	 */
+    auto nonDOALLSCCs = sccManager->getSCCsWithLoopCarriedDataDependencies();
+    for (auto scc : nonDOALLSCCs) {
+        auto sccInfo = sccManager->getSCCAttrs(scc);
+        if (!sccInfo->canExecuteReducibly()) continue;
+
+        for (auto nodePair : scc->getInternalNodePairs()) {
+        auto value = nodePair.first;
+        auto inst = cast<Instruction>(value);
+        if (inst->getParent() != loopHeader) continue;
+
+        auto instClone = task->getCloneOfOriginalInstruction(inst);
+        repeatableInstructions.insert(instClone);
+        }
+
+    }
+
+	/*
+	 * Collect (4) by identifying header instructions belonging to independent SCCs that are loop invariant
+	 */
+    for (auto &I : *loopHeader) {
+            auto scc = sccdag->sccOfValue(&I);
+        auto sccInfo = sccManager->getSCCAttrs(scc);
+            if (!sccInfo->canExecuteIndependently()) continue;
+
+        auto isInvariant = invariantManager->isLoopInvariant(&I);
+        if (!isInvariant) continue;
+
+            repeatableInstructions.insert(task->getCloneOfOriginalInstruction(&I));
+    }
+
+    bool requiresConditionBeforeEnteringHeader = false;
+    for (auto &I : *headerClone) {
+        if (repeatableInstructions.find(&I) == repeatableInstructions.end()) {
+        requiresConditionBeforeEnteringHeader = true;
+        break;
+        }
+    }
+
+    if (requiresConditionBeforeEnteringHeader) {
+        auto &loopGoverningIV = loopGoverningIVAttr->getInductionVariable();
+        auto loopGoverningPHI = task->getCloneOfOriginalInstruction(loopGoverningIV.getLoopEntryPHI());
+        auto stepSize = clonedStepSizeMap.at(&loopGoverningIV);
+
+        
+        // In each latch, assert that the previous iteration would have executed
+        for (auto latch : loopSummary->getLatches()) {
+            BasicBlock *cloneLatch = task->getCloneOfOriginalBasicBlock(latch);
+            // cloneLatch->print(errs() << "Addressing latch:\n");
+            auto latchTerminator = cloneLatch->getTerminator();
+            latchTerminator->eraseFromParent();
+            IRBuilder<> latchBuilder(cloneLatch);
+
+            auto currentIVValue = cast<PHINode>(loopGoverningPHI)->getIncomingValueForBlock(cloneLatch);
+            auto prevIterationValue = latchBuilder.CreateSub(currentIVValue, stepSize);
+            auto clonedCmpInst = updatedCmpInst->clone();
+            clonedCmpInst->replaceUsesOfWith(loopGoverningPHI, prevIterationValue);
+            latchBuilder.Insert(clonedCmpInst);
+            latchBuilder.CreateCondBr(clonedCmpInst, task->getLastBlock(0), headerClone);
+        }
+
+        
+        // In the preheader, assert that either the first iteration is being executed OR
+        // that the previous iteration would have executed. The reason we must also check
+        // if this is the first iteration is if the IV condition is such that <= 1
+        // iteration would ever occur
+        
+        auto preheaderTerminator = preheaderClone->getTerminator();
+        preheaderTerminator->eraseFromParent();
+        IRBuilder<> preheaderBuilder(preheaderClone);
+        auto offsetStartValue = cast<PHINode>(loopGoverningPHI)->getIncomingValueForBlock(preheaderClone);
+        auto prevIterationValue = preheaderBuilder.CreateSub(offsetStartValue, stepSize);
+
+        auto clonedExitCmpInst = updatedCmpInst->clone();
+        clonedExitCmpInst->replaceUsesOfWith(loopGoverningPHI, prevIterationValue);
+        preheaderBuilder.Insert(clonedExitCmpInst);
+        auto startValue = fetchClone(loopGoverningIV.getStartValue());
+        auto isNotFirstIteration = preheaderBuilder.CreateICmpNE(offsetStartValue, startValue);
+        preheaderBuilder.CreateCondBr(
+        preheaderBuilder.CreateAnd(isNotFirstIteration, clonedExitCmpInst),
+        task->getExit(),
+        headerClone
+        );
+    }
 }
 
 void DOALL::addChunkFunctionExecutionAsiderOriginalLoop(LoopDependenceInfo *LDI, Function *loopFunction, Master * cat) {
 
 }
 
-void * DOALL::fetchClone(Value * original) const {
+Value * DOALL::fetchClone(Value * original) const {
+    auto task = this->tasks[0];
+    if (isa<ConstantData>(original)) return original;
 
+    if (task->isAnOriginalLiveIn(original)){
+        return task->getCloneOfOriginalLiveIn(original);
+    }
+
+    assert(isa<Instruction>(original));
+    auto iClone = task->getCloneOfOriginalInstruction(cast<Instruction>(original));
+    assert(iClone != nullptr);
+    return iClone;
 }
 
 void DOALL::addPredecessorAndSuccessorsBasicBlockToTasks(LoopDependenceInfo * LDI, std::vector<DOALLTask *> taskStructs) {
@@ -295,7 +535,7 @@ void DOALL::cloneMemoryLocationsLocallyAndRewireLoop(LoopDependenceInfo * LDI, i
 
         //Then, the stack object can be safely cloned , and it is used by our loop
         //First, we need to remove the alloca instruction to be a live-in
-        task->removeLiveIn(alloca);
+        task->removeLiveIn(allocaLoc);
 
         //Traverse operands of loop instruction to clone all live-in references (casts and GEPs)
         //of the allocation to clone
@@ -411,8 +651,45 @@ void DOALL::adjustDataFlowToUseClones(LoopDependenceInfo * LDI, int taskIndex) {
         this->adjustDataFlowToUseClones(cloneInst, taskIndex);
     }
 }
+void DOALL::adjustDataFlowToUseClones(Instruction * cloneInst, int taskIndex) {
+
+}
 
 void DOALL::setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int taskIndex) {
+    //fetch the task
+    auto task = this->tasks[taskIndex];
+
+    auto loopStructure = LDI->getLoopStructure();
+    auto loopHeader = loopStructure->getHeader();
+    auto loopPreHeader = loopStructure->getPreHeader();
+    auto headerClone = task->getCloneOfOriginalBasicBlock(loopHeader);
+    auto preHeaderClone = task->getCloneOfOriginalBasicBlock(loopPreHeader);
+
+    //iterate over live-out variables
+    for (auto envIndex : LDI->loopEnviroment->getEnvIndicesOfLiveOutVars()) {
+        //check if the current live-out variable can be reduced
+        auto isThisLiveOutVarReducable = this->envBuilder->isReduced(envIndex);
+        if (!isThisLiveOutVarReducable) continue;
+
+        //fetch the instruction that produces the live-out varialbes
+        auto producer = LDI->loopEnviroment->producerAT(envIndex);
+        PHINode * loopEntryProducerPHI = this->fetchLoopEntryPHIOfProducer(LDI, producer);
+
+        //fetch the related instruction of the producer that has been created(cloned) and stored in the parallelized version of the loop
+        auto producerClone = cast<PHINode>(task->getCloneOfOriginalInstruction(loopEntryProducerPHI));
+
+        //fetch the cloned pre-header index
+        auto incomingIndex = producerClone->getBasicBlockIndex(preHeaderClone);
+        assert(incomingIndex != -1);
+
+        //fetch the identify constant for the operation reduced
+        //"0" is the identify for "+" accumulator
+        auto identifyV = this->getIdentityValueForEnvValue(LDI, incomingIndex, loopEntryProducerPHI->getType());
+
+        //set the initial value for the private variable
+        producerClone->setIncomingValue(incomingIndex, identifyV);
+
+    }
 
 }
 
@@ -421,11 +698,363 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
 }
 
 void DOALL::generateCodeToStoreLiveOutVars(LoopDependenceInfo * LDI, int taskIndex) {
+    //fetch the task
+    auto task = this->tasks[taskIndex];
 
+    //create a builder that points to the entry point of the function executed by the task
+    auto entryBlock = task->getEntry();
+    auto entryTerminator = entryBlock->getTerminator();
+    IRBuilder<> entryBuilder(entryTerminator);
+
+    auto& taskFunction = *task->getTaskBody();
+    DominatorTree taskDT(taskFunction);
+    PostDominatorTree taskPDT(taskFunction);
+    DominatorSummary taskDS(taskDT, taskPDT);
+
+    // Iterate over live-out variables and inject stores at the end of the execution of the function of the task to propagate the new live-out values back to the caller of the parallelized loop.
+    
+    auto envUser = this->envBuilder->getUser(taskIndex);
+    for (auto envIndex : envUser->getEnvIndicesOfLiveOutVars()) {
+
+        // Fetch the producer of the current live-out variable.
+        // Fetch the clones of the producer. If none are specified in the one-to-many mapping,
+        // assume the direct cloning of the producer is the only clone
+        auto producer = (Instruction*)LDI->loopEnviroment->producerAT(envIndex);
+        if (!task->doesOriginalLiveOutHaveManyClones(producer)) {
+            auto singleProducerClone = task->getCloneOfOriginalInstruction(producer);
+            task->addLiveOut(producer, singleProducerClone);
+        }
+        auto producerClones = task->getClonesOfOriginalLiveOut(producer);
+
+        // Create GEP access of the single, or reducable, environment variable
+        auto envType = producer->getType();
+        auto isReduced = this->envBuilder->isReduced(envIndex);
+        if (isReduced) {
+            envUser->createReducableEnvPtr(entryBuilder, envIndex, envType, this->numOfTaskInstantces, task->getTaskInstanceID());
+        } else {
+            envUser->createEnvPtr(entryBuilder, envIndex, envType);
+        }
+        auto envPtr = envUser->getEnvPtr(envIndex);
+ 
+        // If the variable is reducable, store the identity as the initial value
+        if (isReduced) {
+
+            // Fetch the operator of the accumulator instruction for this reducable variable
+            // Store the identity value of the operator
+            auto identityV = this->getIdentityValueForEnvValue(LDI, envIndex, envType);
+            entryBuilder.CreateStore(identityV, envPtr);
+        }
+
+        
+        // Inject store instructions to propagate live-out values back to the caller of the parallelized loop.
+        for (auto producerClone : producerClones) {
+            auto insertBBs = this->determineLatestPointsToInsertLiveOutStore(LDI, taskIndex, producerClone, isReduced, taskDS);
+            for (auto BB : insertBBs) {
+                auto producerValueToStore = isReduced
+                ? this->fetchOrCreatePHIForIntermediateProducerValueOfReducibleLiveOutVariable(LDI, taskIndex, envIndex, BB, taskDS)
+                : producerClone;
+
+                IRBuilder<> liveOutBuilder(BB);
+                auto store = (StoreInst*)liveOutBuilder.CreateStore(producerValueToStore, envPtr);
+                store->removeFromParent();
+                store->insertBefore(BB->getTerminator());
+            }
+        }
+    }
 }
 
 void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f, Master& master) {
+    // Create the environment.
+    this->allocateEnvironmentArray(LDI);
+    this->populateLiveInEnvironment(LDI);
 
+    // Fetch the pointer to the environment
+    auto envPtr = envBuilder->getEnvArrayInt8Ptr();
+
+    // Fetch the number of cores
+    auto numCores = ConstantInt::get(master.int64ptr, LDI->getMaxCoreNumber());
+
+    // Fetch the chunk size
+    auto chunkSize = ConstantInt::get(master.int64ptr, LDI->DOALLChunkSize);
+
+    // Call the function that incudes the parallelized loop.
+    IRBuilder<> doallBuilder(this->entryPointOfParallelizedLoop);
+    auto doallCallInst = doallBuilder.CreateCall(this->taskDispatcher, ArrayRef<Value *>({
+        tasks[0]->getTaskBody(),
+        envPtr,
+        numCores,
+        chunkSize
+    }));
+    auto numThreadsUsed = doallBuilder.CreateExtractValue(doallCallInst, (uint64_t)0);
+
+    /*
+    * Propagate the last value of live-out variables to the code outside the parallelized loop.
+    */
+    auto latestBBAfterDOALLCall = this->propagateLiveOutEnvironment(LDI, numThreadsUsed);
+
+    /*
+    * Jump to the unique successor of the loop.
+    */
+    IRBuilder<> afterDOALLBuilder{latestBBAfterDOALLCall};
+    afterDOALLBuilder.CreateBr(this->exitPointOfParallelizedLoop);
+}
+
+PHINode * DOALL::fetchLoopEntryPHIOfProducer(LoopDependenceInfo * LDI, Value * producer) {
+    // Fetch the SCC manager
+    auto sccManager = LDI->getSCCManager();
+
+    auto sccdag = sccManager->getSCCDAG();
+    auto producerSCC = sccdag->sccOfValue(producer);
+
+    auto sccInfo = sccManager->getSCCAttrs(producerSCC);
+    auto reducibleVariable = sccInfo->getSingleLoopCarriedVariable();
+    assert(reducibleVariable != nullptr);
+
+    PHINode *headerProducerPHI = reducibleVariable->getLoopEntryPHIForValueOfVariable(producer);
+    assert(headerProducerPHI != nullptr &&
+        "The reducible variable should be described by a single PHI in the header");
+    return headerProducerPHI;
+}
+
+Value * DOALL::getIdentityValueForEnvValue(LoopDependenceInfo * LDI, int environmentIndex, Type* typeForValue) {
+    
+    // Fetch the SCC manager
+    auto sccManager = LDI->getSCCManager();
+
+    // Fetch the producer of new values of the current environment variable
+    auto producer = LDI->loopEnviroment->producerAT(environmentIndex);
+
+    // Fetch the SCC that this producer belongs to
+    auto producerSCC = sccManager->getSCCDAG()->sccOfValue(producer);
+    assert(producerSCC != nullptr && "The environment value doesn't belong to a loop SCC");
+
+    // Fetch the attributes about the producer SCC
+    auto sccAttrs = sccManager->getSCCAttrs(producerSCC);
+    assert(sccAttrs->numberOfAccumulators() > 0 && "The environment value isn't accumulated!");
+
+    // Fetch the accumulator.
+    auto firstAccumI = *(sccAttrs->getAccumulators().begin());
+
+    // Fetch the identity.
+    auto identityValue = sccManager->accumOpInfo.generateIdentityFor(
+        firstAccumI,
+        typeForValue
+    );
+
+    return identityValue;
+}
+
+std::set<BasicBlock *> DOALL::determineLatestPointsToInsertLiveOutStore (
+        LoopDependenceInfo *LDI,
+        int taskIndex,
+        Instruction *liveOut,
+        bool isReduced,
+        DominatorSummary &taskDS
+)  {
+    //fetch the task
+    auto task = this->tasks[taskIndex];
+
+    // Fetch the header
+    auto loopSummary = LDI->getLoopStructure();
+    auto liveOutBlock = liveOut->getParent();
+
+    // Insert stores in loop exit blocks
+    // If the live out is reducible, it is fine that the live out value does not dominate the exit
+    // as some other intermediate is guaranteed to
+    std::set<BasicBlock *> insertPoints;
+    for (auto BB : loopSummary->getLoopExitBasicBlocks()) {
+        auto cloneBB = task->getCloneOfOriginalBasicBlock(BB);
+        auto liveOutDominatesExit = taskDS.DT.dominates(liveOutBlock, cloneBB);
+        if (!isReduced && !liveOutDominatesExit) continue;
+        insertPoints.insert(cloneBB);
+    }
+
+    // If the parallelization scheme introduced other loop exiting blocks,
+    // and this live out is reducible, we must store the latest intermediate value for them
+    if (isReduced) {
+        for (auto predecessor : predecessors(task->getExit())) {
+        if (predecessor == task->getEntry()) continue;
+        insertPoints.insert(predecessor);
+        }
+    }
+
+    // If no exit block is dominated by the live out, the scheme is doing
+    // short-circuiting logic of some sort on the loop's execution. State the live out's
+    // block itself as a safe-guard.
+    if (insertPoints.empty()) {
+        insertPoints.insert(liveOut->getParent());
+    }
+
+    return insertPoints;
+}
+
+Instruction * DOALL::fetchOrCreatePHIForIntermediateProducerValueOfReducibleLiveOutVariable (
+    LoopDependenceInfo *LDI, 
+    int taskIndex,
+    int envIndex,
+    BasicBlock *insertBasicBlock,
+    DominatorSummary &taskDS
+) {
+    //fetch the scc manager
+    auto sccManager = LDI->getSCCManager();
+
+    //fetch the task
+    auto task = this->tasks[taskIndex];
+    auto& DT = taskDS.DT;
+    auto& PDT = taskDS.PDT;
+
+    //fetch all clones of intermediate values of the producer
+    auto producer = (Instruction *)LDI->loopEnviroment->producerAT(envIndex);
+    auto producerSCC = sccManager->getSCCDAG()->sccOfValue(producer);
+
+    std::set<Instruction *> intermediateValues{};
+    for (auto originalPHI : sccManager->getSCCAttrs(producerSCC)->getPHIs()) {
+        intermediateValues.insert(task->getCloneOfOriginalInstruction(originalPHI));
+    }
+
+    for (auto originalInst : sccManager->getSCCAttrs(producerSCC)->getAccumulators()) {
+        intermediateValues.insert(task->getCloneOfOriginalInstruction(originalInst));
+    }
+
+    //if in the insert block there already exists a single intermediate
+    //return it
+    Instruction * lastIntermediateAtInsertBlock = nullptr;
+    for (auto intermediateValue : intermediateValues) {
+        if (intermediateValue->getParent() != insertBasicBlock) continue;
+        if (lastIntermediateAtInsertBlock &&
+        DT.dominates(intermediateValue, lastIntermediateAtInsertBlock)) continue;
+        lastIntermediateAtInsertBlock = intermediateValue;
+    }
+    if (lastIntermediateAtInsertBlock) return lastIntermediateAtInsertBlock;
+
+    //produce PHI at the insert point
+    IRBuilder<> builder(insertBasicBlock->getFirstNonPHIOrDbgOrLifetime());
+    auto producerType = producer->getType();
+    auto phiNode = builder.CreatePHI(producerType, pred_size(insertBasicBlock));
+
+    //fetch all PHI node basic block predecessors
+    // determine all intermediate values dominating each predecessor
+    // determine the intermediate value of this set that dominates no other intermediates in the set
+    for (auto predIter = pred_begin(insertBasicBlock); predIter != pred_end(insertBasicBlock); ++predIter) {
+        auto predecessor = *predIter;
+
+        std::unordered_set<Instruction *> dominatingValues{};
+        for (auto intermediateValue : intermediateValues) {
+            auto intermediateBlock = intermediateValue->getParent();
+            if (DT.dominates(intermediateBlock, predecessor)) {
+                dominatingValues.insert(intermediateValue);
+            }
+        }
+
+        assert(dominatingValues.size() > 0);
+
+        std::unordered_set<Instruction *> lastDominatingValues{};
+        for (auto value : dominatingValues) {
+            bool isDominatingOthers = false;
+            for (auto otherValue : dominatingValues) {
+                if (value == otherValue) continue;
+                if (!DT.dominates(value, otherValue)) continue;
+                isDominatingOthers = true;
+                break;
+            }
+
+            if (isDominatingOthers) continue;
+            lastDominatingValues.insert(value);
+        }
+
+        assert(lastDominatingValues.size() == 1);
+
+        auto lastDominatingIntermediateValue = *lastDominatingValues.begin();
+
+        auto predecessorTerminator = predecessor->getTerminator();
+        IRBuilder<> builderAtValue(predecessorTerminator);
+
+        auto correctlyTypedValue = this->castToCorrectReducibleType(
+            builderAtValue, lastDominatingIntermediateValue, producer->getType()
+        );
+        phiNode->addIncoming(correctlyTypedValue, predecessor);
+    }
+
+    return phiNode;
+}
+
+std::unordered_map<InductionVariable *, Value *> DOALL::cloneIVStepValueComputation(
+    LoopDependenceInfo * LDI,
+    int taskIndex,
+    IRBuilder<>& insertBlock
+) {
+    //fetch the task
+    auto task = this->tasks[taskIndex];
+
+    //fetch loop info
+    auto loopStructure = LDI->getLoopStructure();
+    auto allIVInfo = LDI->getInductionVariableManager();
+    std::unordered_map<InductionVariable *, Value *> clonedStepSizeMap;
+
+    //clone each IV's step value described by the inductionVariable class
+    for (auto ivInfo : allIVInfo->getInductionVariables(*loopStructure)) {
+        //if the step value is constant or a value present in the original loop, use its clone
+        auto singleComputedValue = ivInfo->getSingleComputedStepValue();
+        if (singleComputedValue) {
+            Value * clonedStepValue = nullptr;
+            if (isa<ConstantData>(singleComputedValue)) {
+                clonedStepValue = singleComputedValue;
+            } else if (task->isAnOriginalLiveIn(singleComputedValue)) {
+                clonedStepValue = task->getCloneOfOriginalLiveIn(singleComputedValue);
+            } else if (auto singleComputeStepInt = dyn_cast<Instruction>(singleComputedValue)) {
+                clonedStepValue = task->getCloneOfOriginalInstruction(singleComputeStepInt);
+            }
+
+            if (clonedStepValue) {
+                clonedStepSizeMap.insert(std::make_pair(ivInfo, clonedStepValue));
+                continue;
+            }
+        }
+
+        //the step size is a composite SCEV
+        //fetch its instruction expansion, cloning into the entry block of the function
+        auto expandedInsts = ivInfo->getComputationOfStepValue();
+        assert(expandedInsts.size() > 0);
+        for (auto expandedInst : expandedInsts) {
+            auto clonedInst = expandedInst->clone();
+            task->addInstruction(expandedInst, clonedInst);
+            insertBlock.Insert(clonedInst);
+        }
+
+        //wire the instructions in the expandsion to use the cloned values
+        for (auto expandedInst : expandedInsts) {
+            this->adjustDataFlowToUseClones(task->getCloneOfOriginalInstruction(expandedInst), 0);
+        }
+        auto clonedStepValue = task->getCloneOfOriginalInstruction(expandedInsts.back());
+        clonedStepSizeMap.insert(std::make_pair(ivInfo, clonedStepValue));
+    }
+    this->adjustStepValueOfPointerTypeIVToReflectPointerArithmetic(clonedStepSizeMap, insertBlock);
+
+    return clonedStepSizeMap;
+}
+
+Value * DOALL::castToCorrectReducibleType(IRBuilder<>& builder, Value * value, Type* targetType) {
+    auto valueType = value->getType();
+    if (valueType == targetType) return value;
+
+    if (valueType->isIntegerTy() && targetType->isIntegerTy()) {
+        return builder.CreateBitCast(value, targetType);
+    } else if (valueType->isIntegerTy() && targetType->isFloatingPointTy()) {
+        return builder.CreateSIToFP(value, targetType);
+    } else if (valueType->isFloatingPointTy() && targetType->isIntegerTy()) {
+        return builder.CreateFPToSI(value, targetType);
+    } else if (valueType->isFloatingPointTy() && targetType->isFloatingPointTy()) {
+        return builder.CreateFPCast(value, targetType);
+    } else {
+        assert(false && "Cannot cast to non-reduciable type");
+    }
+    return nullptr;
+}
+
+void DOALL::adjustStepValueOfPointerTypeIVToReflectPointerArithmetic (
+std::unordered_map<InductionVariable *, Value *> clonedStepValueMap,
+IRBuilder<> &insertBlock) {
+    //TODO:
 }
 
 void DOALL::reset(void) {
@@ -438,6 +1067,18 @@ void DOALL::reset(void) {
         delete envBuilder;
         envBuilder = nullptr;
     }
+
+}
+
+void DOALL::allocateEnvironmentArray(LoopDependenceInfo * LDI) {
+//TODO:
+}
+
+void populateLiveInEnvironment(LoopDependenceInfo * LDI) {
+    //TODO:
+}
+
+BasicBlock * DOALL::propagateLiveOutEnvironment (LoopDependenceInfo *LDI, Value *numberOfThreadsExecuted) {
 
 }
 
