@@ -35,6 +35,7 @@ public:
     void cloneMemoryLocationsLocallyAndRewireLoop(LoopDependenceInfo * LDI, int taskIndex);
 
     void adjustDataFlowToUseClones(LoopDependenceInfo * LDI, int taskIndex);
+    void adjustDataFlowToUseClones(Instruction * cloneInst, int taskIndex);
 
     void setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int taskIndex);
 

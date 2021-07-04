@@ -402,7 +402,14 @@ void DOALL::cloneMemoryLocationsLocallyAndRewireLoop(LoopDependenceInfo * LDI, i
 }
 
 void DOALL::adjustDataFlowToUseClones(LoopDependenceInfo * LDI, int taskIndex) {
+    //fetch the task
+    auto& task = this->tasks[taskIndex];
 
+    //rewire the data flows
+    for (auto originInst : task->getOriginalInstructions()) {
+        auto cloneInst = task->getCloneOfOriginalInstruction(originInst);
+        this->adjustDataFlowToUseClones(cloneInst, taskIndex);
+    }
 }
 
 void DOALL::setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int taskIndex) {
