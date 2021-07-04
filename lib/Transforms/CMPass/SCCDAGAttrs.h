@@ -12,6 +12,7 @@
 #include "AccumulatorOpInfo.h"
 #include "InductionVariables.h"
 #include "MemoryCloningAnalysis.h"
+#include "LoopCarriedDependencies.h"
 
 #include "llvm/Analysis/ScalarEvolution.h"
 
@@ -91,10 +92,7 @@ public:
     // TODO: Return const reference to SCCDAG, not a raw pointer
         SCCDAG * getSCCDAG (void) const ;
 
-    /*
-        * Debug methods
-        */
-    void dumpToFile (int id) ;
+
 
     ~SCCDAGAttrs ();
 

@@ -8,6 +8,8 @@
 #include "LoopSummary.h"
 #include "LoopVariables.h"
 
+#include "MemoryCloningAnalysis.h"
+
 
 #include <set>
 #include <iterator>
@@ -170,7 +172,6 @@ public:
     */
     void setSCCToBeClonable (bool isClonable = true);
 
-    void collectSCCValues ();
 
     const std::pair<Value *, Instruction *> * getSingleInstructionThatControlLoopExit (void);
 

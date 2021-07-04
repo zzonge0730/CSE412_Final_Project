@@ -83,6 +83,8 @@ public:
     
     uint64_t getCompileTimeTripCount(void) const;
 
+    uint32_t getMaxCoreNumber(void) const;
+
 private:
 
     bool areLoopAwareAnalysisEnabled;

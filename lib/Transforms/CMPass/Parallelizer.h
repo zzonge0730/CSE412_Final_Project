@@ -16,6 +16,8 @@
 #include "llvm/IR/Function.h"
 
 #include "DOALL.h"
+#include "Master.h"
+
 
 using namespace llvm;
 
@@ -29,9 +31,15 @@ public:
 
 private:
 
-    bool parallelizeLoop(DOALL& doall);
+    bool parallelizeLoop(LoopDependenceInfo * LDI, Master& master, DOALL& doall);
 
     void printLoop(Loop* loop);
+
+    std::vector<LoopDependenceInfo *> selectTheOrderOfLoopsToParallelize(
+        Master& master, StayConnectedNestedLoopForestNode * tree
+    );
+
+
 };
 
 #endif

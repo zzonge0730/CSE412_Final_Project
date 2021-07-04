@@ -382,6 +382,7 @@ bool LoopDependenceInfo::iterateOverSubLoopsRecursively(std::function<bool (cons
 void LoopDependenceInfo::copyParallelizationOptionsFrom(LoopDependenceInfo * otherLDI) {
     this->DOALLChunkSize = otherLDI->DOALLChunkSize;
     this->areLoopAwareAnalysisEnabled = otherLDI->areLoopAwareAnalysisEnabled;
+    this->maxCoreNumber = otherLDI->maxCoreNumber;
 }
 
 LoopStructure * LoopDependenceInfo::getNestedMostLoopStructure(Instruction * I) const {
@@ -398,4 +399,8 @@ bool LoopDependenceInfo::doesHaveCompileTimeKnownTripCount(void) const {
 
 uint64_t LoopDependenceInfo::getCompileTimeTripCount(void) const {
     return this->tripCount;
+}
+
+uint32_t LoopDependenceInfo::getMaxCoreNumber(void) const {
+    return this->maxCoreNumber;
 }
