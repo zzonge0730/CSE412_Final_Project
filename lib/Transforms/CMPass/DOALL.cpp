@@ -8,14 +8,19 @@
 char DOALL::ID = 0;
 static RegisterPass<DOALL> X("DOALL", "Handle DOALL Parallelism");
 
-void getAnalysisUsage(AnalysisUsage &AU) {
+DOALL::DOALL() : ModulePass{ID} {
+
+}
+
+void DOALL::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<DominatorTree>();
     AU.addRequired<PostDominatorTree>();
 
     AU.setPreservesAll();
 }
-bool runOnModule(Module& M) {
-    
+bool DOALL::runOnModule(Module& M) {
+    errs() << "DOALL runOnModule..\n";
+    return false;
 }
 
 bool DOALL::doInitialization (Module& M) {
@@ -40,9 +45,7 @@ DOALL::~DOALL() {
 
 }
 
-DOALL::DOALL() : ModulePass{ID} {
 
-}
 
 bool DOALL::apply(LoopDependenceInfo * LDI, Master& master) {
     //fetch the loop headers

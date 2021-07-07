@@ -41,8 +41,6 @@ protected:
 
     void rewireLoopToIterateChunks(LoopDependenceInfo * LDI);
 
-    void addChunkFunctionExecutionAsiderOriginalLoop(LoopDependenceInfo *LDI, Function *loopFunction, Master * cat);
-
     void addPredecessorAndSuccessorsBasicBlockToTasks(LoopDependenceInfo * LDI, std::vector<DOALLTask *> taskStructs);
 
     void initEnvironmentBuilder(LoopDependenceInfo * LDI, std::set<int>nonReducableVars, std::set<int>reducableVars);
