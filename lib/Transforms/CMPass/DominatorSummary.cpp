@@ -5,27 +5,31 @@
  */
 
 DomNodeSummary::DomNodeSummary (const DTAliases::Node &node) :
-  B{node.getBlock()}, level{node.getLevel()},
-  parent{nullptr}, iDom{nullptr}, children{} {}
+  B{node.getBlock()}, /*level{node.getLevel()},*/
+  parent{nullptr}, iDom{nullptr}/*, children{}*/ {
+
+  }
 
 DomNodeSummary::DomNodeSummary (const DomNodeSummary &node) :
-  B{node.getBlock()}, level{node.getLevel()},
-  parent{nullptr}, iDom{nullptr}, children{} {}
+  B{node.getBlock()}, /*level{node.getLevel()},*/
+  parent{nullptr}, iDom{nullptr}/*, children{}*/ {
+
+  }
 
 raw_ostream &DomNodeSummary::print (raw_ostream &stream, std::string prefix) {
   stream << prefix << "Block: ";
-  if (getBlock()) getBlock()->printAsOperand(stream);
-  else stream << "null";
-  stream << " Level: " << getLevel() << " Parent: ";
-  if (getParent() && getParent()->getBlock()) getParent()->getBlock()->printAsOperand(stream);
-  else stream << "null";
+  // if (getBlock()) getBlock()->printAsOperand(stream);
+  // else stream << "null";
+  // stream << " Level: " << getLevel() << " Parent: ";
+  // if (getParent() && getParent()->getBlock()) getParent()->getBlock()->printAsOperand(stream);
+  // else stream << "null";
   stream << " I Dom: ";
-  if (getIDom() && getIDom()->getBlock()) getIDom()->getBlock()->printAsOperand(stream);
-  else stream << "null";
+  // if (getIDom() && getIDom()->getBlock()) getIDom()->getBlock()->printAsOperand(stream);
+  // else stream << "null";
   stream << "\n" << prefix << "Children: ";
-  for (auto child : getChildren()) {
-    child->getBlock()->printAsOperand(stream << "\t");
-  }
+  // for (auto child : getChildren()) {
+  //   child->getBlock()->printAsOperand(stream << "\t");
+  // }
   return stream << "\n";
 }
 
@@ -41,9 +45,9 @@ std::vector<DomNodeSummary *> DomNodeSummary::getChildren (void) {
   return children;
 }
 
-unsigned DomNodeSummary::getLevel (void) const {
-  return level;
-}
+// unsigned DomNodeSummary::getLevel (void) const {
+//   return level;
+// }
 
 DomNodeSummary *DomNodeSummary::getIDom (void) {
   return iDom;

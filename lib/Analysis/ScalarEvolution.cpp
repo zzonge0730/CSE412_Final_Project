@@ -6931,6 +6931,54 @@ public:
     return D.visit(Start);
   }
 
+  static void divide (ScalarEvolution &SE, const SCEV *Numerator, 
+                      const SCEV * Denominator, const SCEV **Quotient,
+                      const SCEV **Remainder) {
+    assert(Numerator && Denominator && "Unintialized SCEV");
+
+    SCEVDivision D(SE, Denominator);
+    D.Quotient = D.Zero;
+    D.Remainder = Numerator;
+
+    if (Numerator == Denominator) {
+      *Quotient = D.One;
+      *Remainder = D.Zero;
+      return ;
+    }
+
+    if (Numerator->isZero()) {
+      *Quotient = D.Zero;
+      *Remainder = D.Zero;
+      return;
+    }
+
+    if (Denominator->isOne()) {
+      *Quotient = Numerator;
+      *Remainder = D.Zero;
+      return;
+    }
+
+    if (const SCEVMulExpr * T = dyn_cast<SCEVMulExpr>(Denominator)) {
+      const SCEV * Q, *R;
+      *Quotient = Numerator;
+      for (SCEVMulExpr::op_iterator OpIt = T->op_begin(); OpIt != T->op_end(); ++OpIt) {
+        divide(SE, *Quotient, *OpIt, &Q, &R);
+        *Quotient = Q;
+
+        if (!R->isZero()) {
+          *Quotient = D.Zero;
+          *Remainder = Numerator;
+          return;
+        }
+      }
+      *Remainder = D.Zero;
+      return;
+    }
+    D.visit(Numerator);
+    *Quotient = D.Quotient;
+    *Remainder = D.Remainder;
+  }
+
   SCEVDivision(ScalarEvolution &S, const SCEV *G) : SE(S), GCD(G) {
     Zero = SE.getConstant(GCD->getType(), 0);
     One = SE.getConstant(GCD->getType(), 1);
@@ -7065,6 +7113,7 @@ public:
 private:
   ScalarEvolution &SE;
   const SCEV *GCD, *Zero, *One;
+  const SCEV *Denominator, *Quotient, *Remainder;
 };
 }
 
@@ -7258,6 +7307,282 @@ ScalarEvolution::SCEVCallbackVH::SCEVCallbackVH(Value *V, ScalarEvolution *se)
 //===----------------------------------------------------------------------===//
 //                   ScalarEvolution Class Implementation
 //===----------------------------------------------------------------------===//
+
+// ---zyy---containsUndefs
+static inline bool containsUndefs (const SCEV * S) {
+  return SCEVExprContains(S, [](const SCEV * S) {
+    if (const auto *SU = dyn_cast<SCEVUnknown>(S))
+      return isa<UndefValue>(SU->getValue());
+    return false;
+  });
+}
+
+//---zyy---
+namespace {
+
+// Collect all steps of SCEV expressions.
+struct SCEVCollectStrides {
+  ScalarEvolution &SE;
+  SmallVectorImpl<const SCEV *> &Strides;
+
+  SCEVCollectStrides(ScalarEvolution &SE, SmallVectorImpl<const SCEV *> &S)
+      : SE(SE), Strides(S) {}
+
+  bool follow(const SCEV *S) {
+    if (const SCEVAddRecExpr *AR = dyn_cast<SCEVAddRecExpr>(S))
+      Strides.push_back(AR->getStepRecurrence(SE));
+    return true;
+  }
+
+  bool isDone() const { return false; }
+};
+
+// Collect all SCEVUnknown and SCEVMulExpr expressions.
+struct SCEVCollectTerms {
+  SmallVectorImpl<const SCEV *> &Terms;
+
+  SCEVCollectTerms(SmallVectorImpl<const SCEV *> &T) : Terms(T) {}
+
+  bool follow(const SCEV *S) {
+    if (isa<SCEVUnknown>(S) || isa<SCEVMulExpr>(S) ||
+        isa<SCEVSignExtendExpr>(S)) {
+      if (!containsUndefs(S))
+        Terms.push_back(S);
+
+      // Stop recursion: once we collected a term, do not walk its operands.
+      return false;
+    }
+
+    // Keep looking.
+    return true;
+  }
+
+  bool isDone() const { return false; }
+};
+
+// Check if a SCEV contains an AddRecExpr.
+struct SCEVHasAddRec {
+  bool &ContainsAddRec;
+
+  SCEVHasAddRec(bool &ContainsAddRec) : ContainsAddRec(ContainsAddRec) {
+    ContainsAddRec = false;
+  }
+
+  bool follow(const SCEV *S) {
+    if (isa<SCEVAddRecExpr>(S)) {
+      ContainsAddRec = true;
+
+      // Stop recursion: once we collected a term, do not walk its operands.
+      return false;
+    }
+
+    // Keep looking.
+    return true;
+  }
+
+  bool isDone() const { return false; }
+};
+
+// Find factors that are multiplied with an expression that (possibly as a
+// subexpression) contains an AddRecExpr. In the expression:
+//
+//  8 * (100 +  %p * %q * (%a + {0, +, 1}_loop))
+//
+// "%p * %q" are factors multiplied by the expression "(%a + {0, +, 1}_loop)"
+// that contains the AddRec {0, +, 1}_loop. %p * %q are likely to be array size
+// parameters as they form a product with an induction variable.
+//
+// This collector expects all array size parameters to be in the same MulExpr.
+// It might be necessary to later add support for collecting parameters that are
+// spread over different nested MulExpr.
+struct SCEVCollectAddRecMultiplies {
+  SmallVectorImpl<const SCEV *> &Terms;
+  ScalarEvolution &SE;
+
+  SCEVCollectAddRecMultiplies(SmallVectorImpl<const SCEV *> &T, ScalarEvolution &SE)
+      : Terms(T), SE(SE) {}
+
+  bool follow(const SCEV *S) {
+    if (auto *Mul = dyn_cast<SCEVMulExpr>(S)) {
+      bool HasAddRec = false;
+      SmallVector<const SCEV *, 0> Operands;
+      //for (auto Op : Mul->operands()) {
+      for (SCEVMulExpr::op_iterator OpIt = Mul->op_begin(); OpIt != Mul->op_end(); ++OpIt) {
+        const SCEVUnknown *Unknown = dyn_cast<SCEVUnknown>(*OpIt);
+        if (Unknown && !isa<CallInst>(Unknown->getValue())) {
+          Operands.push_back(*OpIt);
+        } else if (Unknown) {
+          HasAddRec = true;
+        } else {
+          bool ContainsAddRec;
+          SCEVHasAddRec ContiansAddRec(ContainsAddRec);
+          visitAll(*OpIt, ContiansAddRec);
+          HasAddRec |= ContainsAddRec;
+        }
+      }
+      if (Operands.size() == 0)
+        return true;
+
+      if (!HasAddRec)
+        return false;
+
+      Terms.push_back(SE.getMulExpr(Operands));
+      // Stop recursion: once we collected a term, do not walk its operands.
+      return false;
+    }
+
+    // Keep looking.
+    return true;
+  }
+
+  bool isDone() const { return false; }
+};
+
+} // end anonymous namespace
+
+//---zyy
+void ScalarEvolution::collectParametricTerms(const SCEV *Expr,
+    SmallVectorImpl<const SCEV *> &Terms) {
+  SmallVector<const SCEV *, 4> Strides;
+  SCEVCollectStrides StrideCollector(*this, Strides);
+  visitAll(Expr, StrideCollector);
+
+  for (const SCEV *S : Strides) {
+    SCEVCollectTerms TermCollector(Terms);
+    visitAll(S, TermCollector);
+  }
+
+  SCEVCollectAddRecMultiplies MulCollector(Terms, *this);
+  visitAll(Expr, MulCollector);
+}
+
+static inline bool containsParameters (SmallVectorImpl<const SCEV *>& Terms) {
+  for (const SCEV * T : Terms) {
+    if (SCEVExprContains(T, isa<SCEVUnknown, const SCEV *>))
+      return true;
+  }
+  return false;
+}
+
+static inline int numberOfTerms(const SCEV * S) {
+  if (const SCEVMulExpr *Expr = dyn_cast<SCEVMulExpr>(S))
+    return Expr->getNumOperands();
+
+  return 1;
+}
+
+static const SCEV * removeConstantFactors(ScalarEvolution & SE, const SCEV * T) {
+  if (isa<SCEVConstant>(T))
+    return nullptr;
+
+  if (isa<SCEVUnknown>(T))
+    return T;
+
+  if (const SCEVMulExpr * M = dyn_cast<SCEVMulExpr>(T)) {
+    SmallVector<const SCEV *, 2> Factors;
+    for (SCEVMulExpr::op_iterator OpIt = M->op_begin(); OpIt != M->op_end(); ++OpIt) {
+      if (!isa<SCEVConstant>(*OpIt))
+        Factors.push_back(*OpIt);
+    }
+
+    return SE.getMulExpr(Factors);
+  }
+
+  return T;
+}
+
+static bool findArrayDimensionsRec(ScalarEvolution& SE,
+SmallVectorImpl<const SCEV *>& Terms,
+SmallVectorImpl<const SCEV *>& Sizes) {
+  int Last = Terms.size() - 1;
+  const SCEV * Step = Terms[Last];
+
+  //end of recursion
+  if (Last == 0) {
+    if (const SCEVMulExpr * M = dyn_cast<SCEVMulExpr>(Step)) {
+      SmallVector<const SCEV *, 2> Qs;
+      for (SCEVMulExpr::op_iterator OpIt = M->op_begin(); OpIt != M->op_end(); ++OpIt) {
+        if (!isa<SCEVConstant>(*OpIt))
+          Qs.push_back(*OpIt);
+      }
+      Step = SE.getMulExpr(Qs);
+    }
+
+    Sizes.push_back(Step);
+    return true;
+  }
+
+  for (const SCEV *&Term : Terms) {
+    const SCEV *Q, *R;
+    SCEVDivision::divide(SE, Term, Step, &Q, &R);
+
+    if (!R->isZero()) {
+      return false;
+    }
+    
+    Term = Q;
+  }
+
+  Terms.erase(remove_if(Terms, [](const SCEV * E) {
+    return isa<SCEVConstant>(E);
+  }), Terms.end());
+
+  if (Terms.size() > 0) {
+    if (!findArrayDimensionsRec(SE, Terms, Sizes)) {
+      return false;
+    }
+  }
+
+  Sizes.push_back(Step);
+  return true;
+}
+
+void ScalarEvolution::findArrayDimensions(SmallVectorImpl<const SCEV *> &Terms,
+                                          SmallVectorImpl<const SCEV *> &Sizes,
+                                          const SCEV *ElementSize) {
+  if (Terms.size() < 1 || !ElementSize)
+    return;
+
+  // Early return when Terms do not contain parameters: we do not delinearize
+  // non parametric SCEVs.
+  if (!containsParameters(Terms))
+    return;
+
+  // Remove duplicates.
+  array_pod_sort(Terms.begin(), Terms.end());
+  Terms.erase(std::unique(Terms.begin(), Terms.end()), Terms.end());
+
+  // Put larger terms first.
+  llvm::sort(Terms, [](const SCEV *LHS, const SCEV *RHS) {
+    return numberOfTerms(LHS) > numberOfTerms(RHS);
+  });
+
+  // Try to divide all terms by the element size. If term is not divisible by
+  // element size, proceed with the original term.
+  for (const SCEV *&Term : Terms) {
+    const SCEV *Q, *R;
+    SCEVDivision::divide(*this, Term, ElementSize, &Q, &R);
+    if (!Q->isZero())
+      Term = Q;
+  }
+
+  SmallVector<const SCEV *, 4> NewTerms;
+
+  // Remove constant factors.
+  for (const SCEV *T : Terms)
+    if (const SCEV *NewT = removeConstantFactors(*this, T))
+      NewTerms.push_back(NewT);
+
+  if (NewTerms.empty() || !findArrayDimensionsRec(*this, NewTerms, Sizes)) {
+    Sizes.clear();
+    return;
+  }
+
+  // The last element to be pushed into Sizes is the size of an element.
+  Sizes.push_back(ElementSize);
+
+}
+
 
 ScalarEvolution::ScalarEvolution()
   : FunctionPass(ID), ValuesAtScopes(64), LoopDispositions(64), BlockDispositions(64), FirstUnknown(0) {

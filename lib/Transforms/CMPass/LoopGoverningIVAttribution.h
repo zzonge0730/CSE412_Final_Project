@@ -12,6 +12,8 @@
 
 using namespace llvm;
 
+class InductionVariable;
+
 class LoopGoverningIVAttribution {
 public:
     LoopGoverningIVAttribution (InductionVariable &IV, SCC &scc, std::vector<BasicBlock *> &exitBlocks) ;
@@ -35,8 +37,8 @@ public:
     Instruction * getIntermediateValueUsedInCompare (void) const ;
 
 private:
-    InductionVariable &IV;
-    SCC &scc;
+    InductionVariable & IV;
+    SCC & scc;
     std::set<Instruction *> conditionValueDerivation;
     Value *conditionValue;
     Instruction *intermediateValueUsedInCompare;

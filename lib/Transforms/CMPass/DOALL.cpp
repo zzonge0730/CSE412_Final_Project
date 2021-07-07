@@ -1,7 +1,46 @@
 #include "DOALL.h"
 #include "llvm/Support/CFG.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/InstrTypes.h"
 
-DOALL::DOALL(Module& M) {
+char DOALL::ID = 0;
+static RegisterPass<DOALL> X("DOALL", "Handle DOALL Parallelism");
+
+void getAnalysisUsage(AnalysisUsage &AU) {
+    AU.addRequired<DominatorTree>();
+    AU.addRequired<PostDominatorTree>();
+
+    AU.setPreservesAll();
+}
+bool runOnModule(Module& M) {
+    
+}
+
+bool DOALL::doInitialization (Module& M) {
+    this->M = &M;
+    this->taskDispatcher = this->M->getFunction("softboundcets_pseudo_main");//---zyy should be set to dispatcher function, opt later
+    if (this->taskDispatcher == nullptr) {
+        errs() << "ERROR: function xxx couldn't be found...\n";
+        abort();
+    }
+
+    //define the signature of the task
+    auto& ctx = this->M->getContext();
+    auto int8 = IntegerType::get(ctx, 8);
+    auto int64 = IntegerType::get(ctx, 64);
+    Type * types[] = {PointerType::getUnqual(int8),
+        int64, int64, int64};
+    auto funcArgTyeps = ArrayRef<Type*>(types);
+    this->taskSignature = FunctionType::get(Type::getVoidTy(ctx), funcArgTyeps, false);
+}
+
+DOALL::~DOALL() {
+
+}
+
+DOALL::DOALL() : ModulePass{ID} {
 
 }
 
@@ -169,7 +208,55 @@ bool DOALL::canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& cat) {
 }
 
 std::unordered_set<SCC *> DOALL::getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI, Master& cat) {
-    //TODO:
+    std::unordered_set<SCC * > sccs;
+
+    //fetch the SCC manager of the loop given as input
+    auto sccManager = LDI->getSCCManager();
+
+    //iterate over SCCs with loop-carried data dependences
+    auto nonDOALLSCCs = sccManager->getSCCsWithLoopCarriedDataDependencies();
+    for (auto scc : nonDOALLSCCs) {
+        //fetch the scc info
+        auto sccInfo = sccManager->getSCCAttrs(scc);
+
+        //if the scc is reducable, then it does not block the loop to be a DOALL
+        if (sccInfo->canExecuteReducibly()) continue;
+        //if the scc can be cloned, then it does not block the loop to be a DOALL
+        if (sccInfo->canBeCloned()) continue;
+        //if the scc can be removed by cloning objects, then we can ignore it
+        if (sccInfo->canBeClonedUsingLocalMemoryLocations()) continue;
+
+        //if all loop carried data dependencies within the SCC do not overlap between
+        //iterations, then DOALL can ignore them
+        bool areAllDataLCDsFromDisjoinMemoryAccesses = true;
+        auto domainSpaceAnalysis = LDI->getLoopIterationDomainSpaceAnalysis();
+        sccManager->iterateOverLoopCarriedDataDependences(scc, [&areAllDataLCDsFromDisjoinMemoryAccesses,
+        domainSpaceAnalysis](DGEdge<Value> *dep) -> bool{
+            if (dep->isControlDependence()) return false;
+
+            if (!dep->isMemoryDependence()) {
+                areAllDataLCDsFromDisjoinMemoryAccesses = false;
+                return true;
+            }
+
+            auto fromInst = dyn_cast<Instruction>(dep->getOutgoingT());
+            auto toInst = dyn_cast<Instruction>(dep->getIncomingT());
+
+            areAllDataLCDsFromDisjoinMemoryAccesses &= fromInst && toInst &&
+            domainSpaceAnalysis->areInstructionsAccessingDisjointMemoryLocationsBetweenIterations(fromInst, toInst);
+
+            return !areAllDataLCDsFromDisjoinMemoryAccesses;
+        });
+
+        if (areAllDataLCDsFromDisjoinMemoryAccesses) continue;
+
+
+        //now, we found a SCC that blocks DOALL to be applicable
+        sccs.insert(scc);
+
+    }
+
+    return sccs;
 }
 
 void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
@@ -405,13 +492,10 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
     }
 }
 
-void DOALL::addChunkFunctionExecutionAsiderOriginalLoop(LoopDependenceInfo *LDI, Function *loopFunction, Master * cat) {
-
-}
 
 Value * DOALL::fetchClone(Value * original) const {
     auto task = this->tasks[0];
-    if (isa<ConstantData>(original)) return original;
+    if (isa<Constant>(original)) return original;
 
     if (task->isAnOriginalLiveIn(original)){
         return task->getCloneOfOriginalLiveIn(original);
@@ -424,7 +508,72 @@ Value * DOALL::fetchClone(Value * original) const {
 }
 
 void DOALL::addPredecessorAndSuccessorsBasicBlockToTasks(LoopDependenceInfo * LDI, std::vector<DOALLTask *> taskStructs) {
+    if (this->tasks.size() > 0) {
+        errs() << "The technique has been re-initialized without resetting!"
+        << " There are leftover tasks.\n";
+        abort();
+    }
 
+    /*
+    * Fetch the loop headers.
+    */
+    auto loopSummary = LDI->getLoopStructure();
+    auto loopPreHeader = loopSummary->getPreHeader();
+
+    /*
+    * Fetch the loop function.
+    */
+    auto loopFunction = loopSummary->getFunction();
+
+    /*
+    * Fetch the loop structure.
+    */
+    auto loopStructure = LDI->getLoopStructure();
+
+    /*
+    * Setup original loop and task with functions and basic blocks for wiring
+    */
+    auto &cxt = loopFunction->getContext();
+    this->entryPointOfParallelizedLoop = BasicBlock::Create(cxt, "", loopFunction);
+    this->exitPointOfParallelizedLoop = BasicBlock::Create(cxt, "", loopFunction);
+
+    this->numOfTaskInstantces = taskStructs.size();
+    for (auto i = 0; i < this->numOfTaskInstantces; ++i) {
+        auto task = taskStructs[i];
+        tasks.push_back(task);
+
+        /*
+        * Set the formal arguments of the task.
+        */
+        auto &cxt = this->M->getContext();
+        task->extractFuncArgs();
+
+        /*
+        * Fetch the entry and exit basic blocks of the current task.
+        */
+        auto entryBB = task->getEntry();
+        auto exitBB = task->getExit();
+        assert(entryBB != nullptr);
+        assert(exitBB != nullptr);
+
+        /*
+        * Map original preheader to entry block
+        */
+        task->addBasicBlock(loopPreHeader, task->getEntry());
+
+        /*
+        * Create one basic block per loop exit, mapping between originals and clones,
+        * and branching from them to the function exit block
+        */
+        for (auto exitBB : loopStructure->getLoopExitBasicBlocks()) {
+            auto newExitBB = task->addBasicBlockStub(exitBB);
+            task->tagBasicBlockAsLastBlock(newExitBB);
+            IRBuilder<> builder(newExitBB);
+            builder.CreateBr(task->getExit());
+        }
+    }
+
+    return ;
 }
 
 void DOALL::initEnvironmentBuilder(LoopDependenceInfo * LDI, std::set<int>nonReducableVars, std::set<int>reducableVars) {
@@ -652,7 +801,66 @@ void DOALL::adjustDataFlowToUseClones(LoopDependenceInfo * LDI, int taskIndex) {
     }
 }
 void DOALL::adjustDataFlowToUseClones(Instruction * cloneInst, int taskIndex) {
+    //fetch the task
+    auto task = this->tasks[taskIndex];
 
+    //adjust basic block references of terminators and PHI nodes
+    if (cloneInst->isTerminator()) {
+        TerminatorInst * TI = cast<TerminatorInst>(cloneInst);
+        for (int i = 0; i < TI->getNumSuccessors(); i++) {
+            auto succBB = TI->getSuccessor(i);
+            if (succBB->getParent() == task->getTaskBody()) continue;
+            assert(task->isAnOriginalBasicBlock(succBB));
+            TI->setSuccessor(i, task->getCloneOfOriginalBasicBlock(succBB));
+        }
+    }
+
+    //handle phi instruction
+    if (auto phi = dyn_cast<PHINode>(cloneInst)) {
+        for (int i = 0; i < phi->getNumIncomingValues(); i++) {
+            auto incomingBB = phi->getIncomingBlock(i);
+            if (incomingBB->getParent() == task->getTaskBody()) continue;
+            assert(task->isAnOriginalBasicBlock(incomingBB));
+            auto cloneBB = task->getCloneOfOriginalBasicBlock(incomingBB);
+            phi->setIncomingBlock(i, cloneBB);
+        }
+    }
+
+    //adjust values used by clones
+    for (User::op_iterator OpIt = cloneInst->op_begin(); OpIt != cloneInst->op_end(); ++OpIt) {
+        //fetch the current operand
+        auto opValue = (*OpIt).get();
+
+        //if the value is a constant, then there is nothing we need to do
+        if (dyn_cast<Constant>(opValue)) continue;
+
+        //if the value is a loop live-in one, set it to the value loaded from the loop environment passed to the task
+        if (task->isAnOriginalLiveIn(opValue)) {
+            auto internalValue = task->getCloneOfOriginalLiveIn(opValue);
+            (*OpIt).set(internalValue);
+            continue;
+        }
+
+        //the value is not a live-in
+        //if the value is generated by another instruction within the task
+        //then set it to the quivalent cloned instruciton
+        if (auto opInst = dyn_cast<Instruction>(opValue)) {
+            if (task->isAnOriginalInstruction(opInst)) {
+                auto cloneOpInst = task->getCloneOfOriginalInstruction(opInst);
+                (*OpIt).set(cloneOpInst);
+            } else {
+                if (opInst->getFunction() != task->getTaskBody()) {
+                    cloneInst->print(errs() << "ERROR: Insturction has no op from another function: ");
+                    errs() << "\n";
+                    opInst->print(errs() << "ERROR: Op: ");
+                    errs() << "\n";
+                    task->getTaskBody()->print(errs() << "ERROR: TaskBody: ");
+                    opInst->getFunction()->print(errs());
+                    abort();
+                }
+            }
+        }
+    }
 }
 
 void DOALL::setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int taskIndex) {
@@ -693,9 +901,6 @@ void DOALL::setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int
 
 }
 
-void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
-
-}
 
 void DOALL::generateCodeToStoreLiveOutVars(LoopDependenceInfo * LDI, int taskIndex) {
     //fetch the task
@@ -706,9 +911,10 @@ void DOALL::generateCodeToStoreLiveOutVars(LoopDependenceInfo * LDI, int taskInd
     auto entryTerminator = entryBlock->getTerminator();
     IRBuilder<> entryBuilder(entryTerminator);
 
-    auto& taskFunction = *task->getTaskBody();
-    DominatorTree taskDT(taskFunction);
-    PostDominatorTree taskPDT(taskFunction);
+    auto& taskFunction = *(task->getTaskBody());
+    //DominatorTree taskDT(taskFunction);
+    DominatorTree& taskDT = getAnalysis<DominatorTree>(taskFunction);
+    PostDominatorTree& taskPDT = getAnalysis<PostDominatorTree>(taskFunction);
     DominatorSummary taskDS(taskDT, taskPDT);
 
     // Iterate over live-out variables and inject stores at the end of the execution of the function of the task to propagate the new live-out values back to the caller of the parallelized loop.
@@ -779,12 +985,8 @@ void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI,
 
     // Call the function that incudes the parallelized loop.
     IRBuilder<> doallBuilder(this->entryPointOfParallelizedLoop);
-    auto doallCallInst = doallBuilder.CreateCall(this->taskDispatcher, ArrayRef<Value *>({
-        tasks[0]->getTaskBody(),
-        envPtr,
-        numCores,
-        chunkSize
-    }));
+    Value * Args[] = {tasks[0]->getTaskBody(), envPtr, numCores, chunkSize};
+    auto doallCallInst = doallBuilder.CreateCall(this->taskDispatcher, ArrayRef<Value *>(Args));
     auto numThreadsUsed = doallBuilder.CreateExtractValue(doallCallInst, (uint64_t)0);
 
     /*
@@ -795,7 +997,7 @@ void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI,
     /*
     * Jump to the unique successor of the loop.
     */
-    IRBuilder<> afterDOALLBuilder{latestBBAfterDOALLCall};
+    IRBuilder<> afterDOALLBuilder(latestBBAfterDOALLCall);
     afterDOALLBuilder.CreateBr(this->exitPointOfParallelizedLoop);
 }
 
@@ -872,10 +1074,15 @@ std::set<BasicBlock *> DOALL::determineLatestPointsToInsertLiveOutStore (
     // If the parallelization scheme introduced other loop exiting blocks,
     // and this live out is reducible, we must store the latest intermediate value for them
     if (isReduced) {
-        for (auto predecessor : predecessors(task->getExit())) {
-        if (predecessor == task->getEntry()) continue;
-        insertPoints.insert(predecessor);
+        for (pred_iterator It = pred_begin(task->getExit()); It != pred_end(task->getExit()); ++It) {
+            BasicBlock * pre = *It;
+            if (pre == task->getEntry()) continue;
+            insertPoints.insert(pre);
         }
+        // for (auto predecessor : predecessors(task->getExit())) {
+        // if (predecessor == task->getEntry()) continue;
+        //     insertPoints.insert(predecessor);
+        // }
     }
 
     // If no exit block is dominated by the live out, the scheme is doing
@@ -930,8 +1137,9 @@ Instruction * DOALL::fetchOrCreatePHIForIntermediateProducerValueOfReducibleLive
     //produce PHI at the insert point
     IRBuilder<> builder(insertBasicBlock->getFirstNonPHIOrDbgOrLifetime());
     auto producerType = producer->getType();
-    auto phiNode = builder.CreatePHI(producerType, pred_size(insertBasicBlock));
-
+    //auto phiNode = builder.CreatePHI(producerType, pred_size(insertBasicBlock));
+    auto predSize = std::distance(pred_begin(insertBasicBlock), pred_end(insertBasicBlock));
+    auto phiNode = builder.CreatePHI(producerType, predSize);
     //fetch all PHI node basic block predecessors
     // determine all intermediate values dominating each predecessor
     // determine the intermediate value of this set that dominates no other intermediates in the set
@@ -997,7 +1205,7 @@ std::unordered_map<InductionVariable *, Value *> DOALL::cloneIVStepValueComputat
         auto singleComputedValue = ivInfo->getSingleComputedStepValue();
         if (singleComputedValue) {
             Value * clonedStepValue = nullptr;
-            if (isa<ConstantData>(singleComputedValue)) {
+            if (isa<Constant>(singleComputedValue)) {
                 clonedStepValue = singleComputedValue;
             } else if (task->isAnOriginalLiveIn(singleComputedValue)) {
                 clonedStepValue = task->getCloneOfOriginalLiveIn(singleComputedValue);
@@ -1054,7 +1262,29 @@ Value * DOALL::castToCorrectReducibleType(IRBuilder<>& builder, Value * value, T
 void DOALL::adjustStepValueOfPointerTypeIVToReflectPointerArithmetic (
 std::unordered_map<InductionVariable *, Value *> clonedStepValueMap,
 IRBuilder<> &insertBlock) {
-    //TODO:
+    // 
+    // If the IV's type is pointer, then the SCEV of the step value for the IV is
+    // pointer arithmetic and needs to be multiplied by the bit size of pointers to
+    // reflect the exact change of the value
+    // 
+    // This occurs because GEP information is lost to ScalarEvolution analysis when it
+    // computes the step value as a SCEV
+    // 
+    // const DataLayout & DL = this->M->getDataLayout();
+    // auto ptrSizeInBytes = DL.getPointerSize();
+    auto ptrSizeInBytes = this->M->getDataLayout().size(); //---zyy , later notify
+    for (auto ivAndStepValuePair : clonedStepValueMap) {
+        auto iv = ivAndStepValuePair.first;
+        auto value = ivAndStepValuePair.second;
+
+        auto loopEntryPHI = iv->getLoopEntryPHI();
+        if (!loopEntryPHI->getType()->isPointerTy()) continue;
+
+        auto ptrSizeValue = ConstantInt::get(value->getType(), ptrSizeInBytes, false);
+        auto adjustedStepValue = insertBlock.CreateMul(value, ptrSizeValue);
+        clonedStepValueMap[iv] = adjustedStepValue;
+    }
+
 }
 
 void DOALL::reset(void) {
@@ -1071,15 +1301,123 @@ void DOALL::reset(void) {
 }
 
 void DOALL::allocateEnvironmentArray(LoopDependenceInfo * LDI) {
-//TODO:
+    //fetch the loop function
+    auto loopStructure = LDI->getLoopStructure();
+    auto loopFunction = loopStructure->getFunction();
+
+    //fetch the first instruction of the first basic block
+    auto firstBB = loopFunction->begin();
+    auto firstInst = firstBB->begin();
+
+    //generate the environment
+    IRBuilder<> builder(&*firstInst);
+    this->envBuilder->generateEnvArray(builder);
+    this->envBuilder->generateEnvVariables(builder);
 }
 
-void populateLiveInEnvironment(LoopDependenceInfo * LDI) {
-    //TODO:
+void DOALL::populateLiveInEnvironment(LoopDependenceInfo * LDI) {
+    //fetch the loop environment
+    auto loopEnv = LDI->loopEnviroment;
+
+    //store live-in values into the environment just before jumping to the parallelized loop
+    IRBuilder<> builder(this->entryPointOfParallelizedLoop);
+
+    for (auto envIndex : loopEnv->getEnvIndicesOfLiveInVars()) {
+        //fetch the value to store
+        auto producerOfLiveIn = loopEnv->producerAT(envIndex);
+
+        //fetch the memory location inside the environment dedicated to the live-in value
+        auto envVar = this->envBuilder->getEnvVar(envIndex);
+
+        //store the value inside the environment
+        builder.CreateStore(producerOfLiveIn, envVar);
+    }
 }
 
 BasicBlock * DOALL::propagateLiveOutEnvironment (LoopDependenceInfo *LDI, Value *numberOfThreadsExecuted) {
+    auto builder = new IRBuilder<>(this->entryPointOfParallelizedLoop);
 
+    //fetch the loop headers
+    auto loopStructure = LDI->getLoopStructure();
+    auto loopPreHeader = loopStructure->getPreHeader();
+
+    //fetch the scc manager
+    auto sccManager = LDI->getSCCManager();
+
+    //collect reduction operation information needed to accumulate reducable variables after parallelization execution
+    std::unordered_map<int, int> reducableBinaryOps;
+    std::unordered_map<int, Value *> initalValues;
+
+    for (auto envIndex : LDI->loopEnviroment->getEnvIndicesOfLiveOutVars()) {
+        auto isReduced = this->envBuilder->isReduced(envIndex);
+        if (!isReduced) continue;
+
+        auto producer = LDI->loopEnviroment->producerAT(envIndex);
+        auto producerSCC = sccManager->getSCCDAG()->sccOfValue(producer);
+        auto producerSCCAttributes = sccManager->getSCCAttrs(producerSCC);
+
+        //need to get accumulator that feeds directly into producer PHI, not any intermediate one
+        auto firstAccumInst = *(producerSCCAttributes->getAccumulators().begin());
+        auto binOpCode = firstAccumInst->getOpcode();
+
+        reducableBinaryOps[envIndex] = sccManager->accumOpInfo.accumOpForType(binOpCode, producer->getType());
+
+        PHINode * loopEntryProducerPHI = fetchLoopEntryPHIOfProducer(LDI, producer);
+        auto initValPHIIndex = loopEntryProducerPHI->getBasicBlockIndex(loopPreHeader);
+        auto initialValue = loopEntryProducerPHI->getIncomingValue(initValPHIIndex);
+        initalValues[envIndex] = castToCorrectReducibleType(*builder, initialValue, producer->getType());
+    }
+
+    auto afterReductionB = this->envBuilder->reduceLiveOutVariables(
+        this->entryPointOfParallelizedLoop,
+        *builder,
+        reducableBinaryOps,
+        initalValues,
+        numberOfThreadsExecuted
+    );
+
+    delete builder;
+
+    //if reduction occurred, the all environment loads to propagate live outs need to be 
+    //inserted after the reduction loop
+    IRBuilder<> *afterReductionBuilder;
+
+    if (afterReductionB->getTerminator()) {
+        afterReductionBuilder->SetInsertPoint(afterReductionB->getTerminator());
+    } else {
+        afterReductionBuilder = new IRBuilder<>(afterReductionB);
+    }
+
+    for (auto envIndex : LDI->loopEnviroment->getEnvIndicesOfLiveOutVars()) {
+        auto prod = LDI->loopEnviroment->producerAT(envIndex);
+
+        //if the environment variable isn't reduced, it is held in allocated
+        //memory that needs to be loaded from in order to retrieve the value
+
+        auto isReduced = this->envBuilder->isReduced(envIndex);
+        Value * envVar;
+        if (isReduced) {
+            envVar = this->envBuilder->getAccumulatedReducableEnvVar(envIndex);
+        } else {
+            envVar = afterReductionBuilder->CreateLoad(this->envBuilder->getEnvVar(envIndex));
+        }
+
+        for (auto consumer : LDI->loopEnviroment->consumersOf(prod)) {
+            if (auto depPHI = dyn_cast<PHINode>(consumer)) {
+                depPHI->addIncoming(envVar, this->exitPointOfParallelizedLoop);
+                continue;
+            }
+
+            prod->print(errs() << "Producer of environment varialbes: \n");
+            errs() << "\n";
+            errs() << "Loop not in LCSSA!!\n";
+            abort();
+        }
+    }
+
+    if (afterReductionBuilder) delete afterReductionBuilder;
+
+    return afterReductionB;
 }
 
 Value * DOALL::getEnvArray(void) const {

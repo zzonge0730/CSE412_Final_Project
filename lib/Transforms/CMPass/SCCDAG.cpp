@@ -1,8 +1,6 @@
 #include "SCCDAG.h"
-
-#include "llvm/ADT/SCCIterator.h"
-
 #include "DGGraphTraits.h"
+
 
 SCCDAG::SCCDAG(PDG *pdg) {
 
@@ -20,9 +18,8 @@ SCCDAG::SCCDAG(PDG *pdg) {
     pdg->setEntryNode(nodeToVisit);
 
     DGGraphWrapper<PDG, Value> pdgWrapper(pdg);
-
-    for (auto pdgI = scc_begin(&pdgWrapper); pdgI != scc_end(&pdgWrapper); ++pdgI) {
-
+  //   //scc_iterator<DGGraphWrapper<PDG, llvm::Value> *, llvm::GraphTraits<DGGraphWrapper<PDG, llvm::Value> *>>
+  for (auto pdgI = scc_begin(&pdgWrapper); pdgI != scc_end(&pdgWrapper); ++pdgI) {
       /*
        * Identify a new SCC.
        */

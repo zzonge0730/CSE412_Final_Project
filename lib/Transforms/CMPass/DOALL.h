@@ -2,6 +2,7 @@
 #define DOALL_H
 
 #include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 
 #include "LoopDependenceInfo.h"
 #include "Master.h"
@@ -10,13 +11,17 @@
 #include "IVStepperUtility.h"
 
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Analysis/Dominators.h"
 
 using namespace llvm;
 
-class DOALL {
+class DOALL : public ModulePass {
 public:
-    DOALL(Module& M);
-
+    static char ID;
+    DOALL();
+    void getAnalysisUsage(AnalysisUsage &AU) const override;
+    bool runOnModule(Module& M) override;
+    bool doInitialization (Module& M) override;
     ~DOALL();
     bool apply(LoopDependenceInfo * LDI, Master& master);
 
@@ -53,7 +58,6 @@ protected:
 
     void setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int taskIndex);
 
-    void rewireLoopToIterateChunks(LoopDependenceInfo * LDI);
 
     void generateCodeToStoreLiveOutVars(LoopDependenceInfo * LDI, int taskIndex);
 

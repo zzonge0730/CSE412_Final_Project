@@ -1,4 +1,6 @@
 #include "InvariantManager.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/User.h"
 
 InvariantManager::InvariantManager(LoopStructure * loopS, PDG * loopPDG) : ls{loopS} {
     //check every instruction of the loop
@@ -189,8 +191,9 @@ bool InvariantManager::InvarianceChecker::isEvolvingValue(Value * toValue, DGEdg
 
 bool InvariantManager::InvarianceChecker::arePHIIncomingValuesEquivalent(PHINode* phi) {
     std::unordered_set<Value *> incomingValues{};
-    for (auto& incomingUse : phi->incoming_values()) {
-        auto incomingValue = incomingUse.get();
+    //for (auto& incomingUse : phi->incoming_values()) {
+    for (User::op_iterator OpIt = phi->op_begin(); OpIt != phi->op_end(); ++OpIt ) {
+        auto incomingValue = (*OpIt).get();
         incomingValues.insert(incomingValue); 
     }
 

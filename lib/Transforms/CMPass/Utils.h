@@ -6,7 +6,8 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 
-
+#include <memory>
+#include <utility>
 
 using namespace llvm;
 
@@ -15,5 +16,10 @@ bool IsSafeCheckFun(StringRef funcName);
 
 bool IsEmittingInst(Instruction &I);
 bool IsMemAccessInst(Instruction &I);
+
+// template<typename T, typename... Args>
+// std::unique_ptr<T> make_unique(Args&&... args) {
+//     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+// }
 
 #endif

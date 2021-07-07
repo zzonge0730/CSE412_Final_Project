@@ -831,6 +831,17 @@ static Value *getAISize(LLVMContext &Context, Value *Amt) {
   return Amt;
 }
 
+Optional<uint64_t> AllocaInst::getAllocationSizeInBits(const DataLayout &DL) const {
+  uint64_t Size = DL.getTypeAllocSizeInBits(getAllocatedType());
+  if (isArrayAllocation()) {
+    const ConstantInt * c = dyn_cast<ConstantInt>(getArraySize());
+    if (!c) return None;
+    Size *= c->getZExtValue();
+  }
+
+  return Size;
+}
+
 AllocaInst::AllocaInst(Type *Ty, Value *ArraySize,
                        const Twine &Name, Instruction *InsertBefore)
   : UnaryInstruction(PointerType::getUnqual(Ty), Alloca,
@@ -3113,6 +3124,20 @@ CmpInst::Predicate CmpInst::getInversePredicate(Predicate pred) {
     case FCMP_UNO: return FCMP_ORD;
     case FCMP_TRUE: return FCMP_FALSE;
     case FCMP_FALSE: return FCMP_TRUE;
+  }
+}
+
+CmpInst::Predicate CmpInst::getNonStrictPredicate(Predicate pred) {
+  switch (pred) {
+    case ICMP_SGT: return ICMP_SGE;
+    case ICMP_SLT: return ICMP_SLE;
+    case ICMP_UGT: return ICMP_UGE;
+    case ICMP_ULT: return ICMP_ULE;
+    case FCMP_OGT: return FCMP_OGE;
+    case FCMP_OLT: return FCMP_OLE;
+    case FCMP_UGT: return FCMP_UGE;
+    case FCMP_ULT: return FCMP_ULE;
+    default: return pred;
   }
 }
 

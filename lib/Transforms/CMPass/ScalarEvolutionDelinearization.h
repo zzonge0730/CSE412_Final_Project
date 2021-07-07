@@ -1,5 +1,5 @@
 #ifndef SCALAREVOLUTIONDELINEARIZATION_H
-#define SCALAREVOLUTIONDELINEARIZATION_h
+#define SCALAREVOLUTIONDELINEARIZATION_H
 
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
@@ -112,17 +112,18 @@ public:
     if (const SCEVMulExpr *T = dyn_cast<SCEVMulExpr>(Denominator)) {
         const SCEV *Q, *R;
         *Quotient = Numerator;
-        for (const SCEV *Op : T->operands()) {
-        divide(SE, *Quotient, Op, &Q, &R);
-        *Quotient = Q;
+        //for (const SCEV *Op : T->operands()) {
+        for (SCEVNAryExpr::op_iterator OpIt = T->op_begin(); OpIt != T->op_end(); ++OpIt) {
+            divide(SE, *Quotient, *OpIt, &Q, &R);
+            *Quotient = Q;
 
-        // Bail out when the Numerator is not divisible by one of the terms of
-        // the Denominator.
-        if (!R->isZero()) {
-            *Quotient = D.Zero;
-            *Remainder = Numerator;
-            return;
-        }
+            // Bail out when the Numerator is not divisible by one of the terms of
+            // the Denominator.
+            if (!R->isZero()) {
+                *Quotient = D.Zero;
+                *Remainder = Numerator;
+                return;
+            }
         }
         *Remainder = D.Zero;
         return;
@@ -138,8 +139,8 @@ public:
     void visitUDivExpr(const SCEVUDivExpr *Numerator) {}
     void visitSMaxExpr(const SCEVSMaxExpr *Numerator) {}
     void visitUMaxExpr(const SCEVUMaxExpr *Numerator) {}
-    void visitSMinExpr(const SCEVSMinExpr *Numerator) {}
-    void visitUMinExpr(const SCEVUMinExpr *Numerator) {}
+    //void visitSMinExpr(const SCEVSMinExpr *Numerator) {}
+    //void visitUMinExpr(const SCEVUMinExpr *Numerator) {}
     void visitUnknown(const SCEVUnknown *Numerator) {}
     void visitCouldNotCompute(const SCEVCouldNotCompute *Numerator) {}
 
@@ -200,9 +201,9 @@ public:
     SmallVector<const SCEV *, 2> Qs, Rs;
     Type *Ty = Denominator->getType();
 
-    for (const SCEV *Op : Numerator->operands()) {
+    for (SCEVNAryExpr::op_iterator OpIt = Numerator->op_begin(); OpIt != Numerator->op_end(); ++OpIt) {
         const SCEV *Q, *R;
-        divide(SE, Op, Denominator, &Q, &R);
+        divide(SE, *OpIt, Denominator, &Q, &R);
 
         // Bail out if types do not match.
         if (Ty != Q->getType() || Ty != R->getType())
@@ -211,6 +212,18 @@ public:
         Qs.push_back(Q);
         Rs.push_back(R);
     }
+
+    // for (const SCEV *Op : Numerator->operands()) {
+    //     const SCEV *Q, *R;
+    //     divide(SE, Op, Denominator, &Q, &R);
+
+    //     // Bail out if types do not match.
+    //     if (Ty != Q->getType() || Ty != R->getType())
+    //     return cannotDivide(Numerator);
+
+    //     Qs.push_back(Q);
+    //     Rs.push_back(R);
+    // }
 
     if (Qs.size() == 1) {
         Quotient = Qs[0];
@@ -223,26 +236,27 @@ public:
     }
 
     void visitMulExpr(const SCEVMulExpr *Numerator) {
-    SmallVector<const SCEV *, 2> Qs;
-    Type *Ty = Denominator->getType();
+        SmallVector<const SCEV *, 2> Qs;
+        Type *Ty = Denominator->getType();
 
-    bool FoundDenominatorTerm = false;
-    for (const SCEV *Op : Numerator->operands()) {
+        bool FoundDenominatorTerm = false;
+    // for (const SCEV *Op : Numerator->operands()) {
+    for (SCEVNAryExpr::op_iterator OpIt = Numerator->op_begin(); OpIt != Numerator->op_end(); ++OpIt) {
         // Bail out if types do not match.
-        if (Ty != Op->getType())
+        if (Ty != (*OpIt)->getType())
         return cannotDivide(Numerator);
 
         if (FoundDenominatorTerm) {
-        Qs.push_back(Op);
-        continue;
+            Qs.push_back(*OpIt);
+            continue;
         }
 
         // Check whether Denominator divides one of the product operands.
         const SCEV *Q, *R;
-        divide(SE, Op, Denominator, &Q, &R);
+        divide(SE, *OpIt, Denominator, &Q, &R);
         if (!R->isZero()) {
-        Qs.push_back(Op);
-        continue;
+            Qs.push_back(*OpIt);
+            continue;
         }
 
         // Bail out if types do not match.
@@ -269,14 +283,17 @@ public:
     ValueToValueMap RewriteMap;
     RewriteMap[cast<SCEVUnknown>(Denominator)->getValue()] =
         cast<SCEVConstant>(Zero)->getValue();
-    Remainder = SCEVParameterRewriter::rewrite(Numerator, SE, RewriteMap, true);
-
+    // Remainder = SCEVParameterRewriter::rewrite(Numerator, SE, RewriteMap, true);
+    Remainder = SCEVParameterRewriter::rewrite(Numerator, SE, RewriteMap);
+    
     if (Remainder->isZero()) {
         // The Quotient is obtained by replacing Denominator by 1 in Numerator.
         RewriteMap[cast<SCEVUnknown>(Denominator)->getValue()] =
             cast<SCEVConstant>(One)->getValue();
+        // Quotient =
+        //     SCEVParameterRewriter::rewrite(Numerator, SE, RewriteMap, true);
         Quotient =
-            SCEVParameterRewriter::rewrite(Numerator, SE, RewriteMap, true);
+            SCEVParameterRewriter::rewrite(Numerator, SE, RewriteMap);
         return;
     }
 

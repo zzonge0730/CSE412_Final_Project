@@ -80,14 +80,31 @@ public:
     //Dependences with the outside code
     Value * getEnvironment (void) const ;
 
-    void extractFuncArgs();
+    void extractFuncArgs(void);
 
     Value *chunkSizeArg, *coreArg, *numCoresArg;
+    Value * envArg, *instanceIndexV;
 
 private:
     uint32_t ID;
     Function * F;
 
+    //one-to-one mapping between the original live in value and a pointer
+    //to the environment where that original live in values is stored for use by the task
+    std::unordered_map<Value *, Value *> liveInClones;
+
+    std::unordered_map<Instruction*, std::unordered_set<Instruction*>> liveOutClones;
+
+    //one-to-one mapping between the original loop's structure and the task's cloned loop structure
+    std::unordered_map<BasicBlock *, BasicBlock *> basicBlockClones;
+    std::unordered_map<Instruction*, Instruction*> instructionClones;
+
+    BasicBlock * entryBlock;
+    BasicBlock * exitBlock;
+
+    std::vector<BasicBlock *> lastBlocks;
+
+    LLVMContext& getTaskLLVMContext(void) const;
 };
 
 #endif

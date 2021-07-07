@@ -77,8 +77,9 @@ LoopStructure * LoopSummary::createSummary(Loop * loop, LoopStructure * parentLo
     //create the map from basic blocks to loop;
 
     auto lsPtr = lsSummary.get();
-    for (auto BB : loop->blocks()) {
-        this->bbToLoop[BB] = lsPtr;
+    // for (auto BB : loop->blocks()) {
+    for (auto BBIt = loop->block_begin(); BBIt != loop->block_end(); ++BBIt) {
+        this->bbToLoop[*BBIt] = lsPtr;
     }
 
     auto ls = this->loops.insert(std::move(lsSummary)).first->get();

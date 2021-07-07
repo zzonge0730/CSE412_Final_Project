@@ -83,14 +83,14 @@ bool PDGAnalysis::doInitialization(Module &M) {
 }
 
 void PDGAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
-    errs() << "getAnalysisUsage\n";
+    //errs() << "getAnalysisUsage\n";
     AU.addRequired<AliasAnalysis>();
     AU.addRequired<PostDominatorTree>(); // 
     AU.addRequired<DominatorTree>();
     AU.addRequired<LoopInfo>();
     AU.addRequired<CallGraph>();
     AU.setPreservesAll();
-    errs() << "getAnalysisUsage---after\n";
+    //errs() << "getAnalysisUsage---after\n";
 }
 
 void PDGAnalysis::releaseMemory() {
@@ -713,7 +713,7 @@ bool PDGAnalysis::isTheLibraryFunctionPure(Function * libF) {
     return false;
 }
 
-bool isTheLibraryFunctionThreadSafe(Function * libraryFunction) {
+bool PDGAnalysis::isTheLibraryFunctionThreadSafe(Function * libraryFunction) {
     if (PDGAnalysis::externalThreadSafeFunctions.count(libraryFunction->getName())) {
         return true;
     }
@@ -722,7 +722,7 @@ bool isTheLibraryFunctionThreadSafe(Function * libraryFunction) {
 }
 
 // http://www.cplusplus.com/reference/clibrary/ and https://github.com/SVF-tools/SVF/blob/master/lib/Util/ExtAPI.cpp
-const StringSet<> PDGAnalysis::libraryFunction {
+const std::unordered_set<std::string> PDGAnalysis::libraryFunction {
     // ctype.h
   "isalnum",
   "isalpha",
@@ -834,7 +834,7 @@ const StringSet<> PDGAnalysis::libraryFunction {
   "rand_r"
 };
 
-const StringSet<> PDGAnalysis::externalThreadSafeFunctions {
+const std::unordered_set<std::string> PDGAnalysis::externalThreadSafeFunctions {
     "malloc",
     "calloc",
     "realloc",

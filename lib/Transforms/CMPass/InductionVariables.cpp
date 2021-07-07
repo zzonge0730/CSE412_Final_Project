@@ -69,7 +69,7 @@ void InductionVariable::traverseCycleThroughLoopEntryPHIToGetAllIVInstructions (
       if (!edge->isDataDependence() || edge->isMemoryDependence()) continue;
       auto otherNode = edge->getOutgoingNode();
       auto otherValue = otherNode->getT();
-      if (!scc.isInternal(otherValue)) continue;
+      if (!scc.isInternalNode(otherValue)) continue;
       ivIntermediateValues.push(otherNode);
     }
   }
@@ -135,8 +135,9 @@ void InductionVariable::traverseConsumersOfIVInstructionsToGetAllDerivedSCEVInst
      * apart from constants and loop invariants
      */
     bool usesAtLeastOneIVInstruction = false;
-    for (auto &use : I->operands()) {
-      auto usedValue = use.get();
+    // for (auto &use : I->operands()) {
+    for (User::op_iterator OpIt = I->op_begin(); OpIt != I->op_end(); ++OpIt ) {
+      auto usedValue = (*OpIt).get();
 
       if (isa<ConstantInt>(usedValue)) continue;
       if (IVM.isLoopInvariant(usedValue)) continue;
@@ -262,11 +263,11 @@ void InductionVariable::deriveStepValue (
     case SCEVTypes::scMulExpr:
     case SCEVTypes::scSignExtend:
     case SCEVTypes::scSMaxExpr:
-    case SCEVTypes::scSMinExpr:
+    // case SCEVTypes::scSMinExpr:
     case SCEVTypes::scTruncate:
     case SCEVTypes::scUDivExpr:
     case SCEVTypes::scUMaxExpr:
-    case SCEVTypes::scUMinExpr:
+    // case SCEVTypes::scUMinExpr:
     case SCEVTypes::scZeroExtend:
 
       /*
@@ -351,10 +352,10 @@ bool InductionVariable::deriveStepValueFromCompositeSCEV (
 }
 
 InductionVariable::~InductionVariable () {
-  BasicBlock *tempBlock = nullptr;
-  if (tempBlock) {
-    tempBlock->deleteValue();
-  }
+  // BasicBlock *tempBlock = nullptr;
+  // if (tempBlock) {
+  //   tempBlock->deleteValue();
+  // }
 }
 
 SCC *InductionVariable::getSCC (void) const {

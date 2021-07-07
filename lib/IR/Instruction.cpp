@@ -19,6 +19,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/LeakDetector.h"
+#include "llvm/IR/IntrinsicInst.h"
 using namespace llvm;
 
 Instruction::Instruction(Type *ty, unsigned it, Use *Ops, unsigned NumOps,
@@ -184,6 +185,15 @@ FastMathFlags Instruction::getFastMathFlags() const {
 /// Copy I's fast-math flags
 void Instruction::copyFastMathFlags(const Instruction *I) {
   setFastMathFlags(I->getFastMathFlags());
+}
+
+//--zyy--
+bool Instruction::isLifetimeStartOrEnd() const {
+  auto II = dyn_cast<IntrinsicInst>(this);
+  if (!II) return false;
+  Intrinsic::ID ID = II->getIntrinsicID();
+  return ID == Intrinsic::lifetime_start || ID == Intrinsic::lifetime_end;
+
 }
 
 

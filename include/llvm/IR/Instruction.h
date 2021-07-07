@@ -82,6 +82,9 @@ public:
                          static_cast<const Instruction *>(this)->getFunction());
   }
 
+  //--zyy--
+  bool isLifetimeStartOrEnd() const;
+
   //===--------------------------------------------------------------------===//
   // Subclass classification.
   //===--------------------------------------------------------------------===//
@@ -119,6 +122,17 @@ public:
   /// isArithmeticShift - Return true if this is an arithmetic shift right.
   inline bool isArithmeticShift() const {
     return getOpcode() == AShr;
+  }
+
+  // ---zyy---
+  /// Determine if the Opcode is and/or/xor.
+  static inline bool isBitwiseLogicOp(unsigned Opcode) {
+    return Opcode == And || Opcode == Or || Opcode == Xor;
+  }
+
+  /// Return true if this is and/or/xor.
+  inline bool isBitwiseLogicOp() const {
+    return isBitwiseLogicOp(getOpcode());
   }
 
   /// @brief Determine if the OpCode is one of the CastInst instructions.

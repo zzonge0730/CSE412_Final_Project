@@ -16,23 +16,6 @@
 
 using namespace llvm;
 
-class ScalarEvolutionReferentialExpander {
-public:
-    ScalarEvolutionReferentialExpander (ScalarEvolution &SE, Function &F) ;
-    ~ScalarEvolutionReferentialExpander () ;
-
-    SCEVReference *createReferenceTree (const SCEV *scev, std::set<Value *> valuesInScope);
-
-    Value *expandUsingReferenceValues (
-    SCEVReference *tree,
-    std::set<Value *> valuesToReferenceAndNotExpand,
-    IRBuilder<> &expansionBuilder
-    );
-
-private:
-    SCEVValueMapper *scevValueMapper;
-};
-
 class SCEVReference {
 public:
     SCEVReference(Value *V, const SCEV *scev) ;
@@ -67,6 +50,27 @@ private:
     std::unordered_map<Value *, const SCEV *> valueToSCEV;
 };
 
+class ScalarEvolutionReferentialExpander {
+public:
+    ScalarEvolutionReferentialExpander (ScalarEvolution &SE, Function &F) ;
+    ~ScalarEvolutionReferentialExpander () ;
+
+    SCEVReference * createReferenceTree (const SCEV *scev, std::set<Value *> valuesInScope);
+
+    Value * expandUsingReferenceValues (
+    SCEVReference * tree,
+    std::set<Value *> valuesToReferenceAndNotExpand,
+    IRBuilder<>& expansionBuilder
+    );
+
+private:
+    SCEVValueMapper * scevValueMapper;
+};
+
+
+
+
+
 
 class ReferenceTreeBuilder : SCEVVisitor<ReferenceTreeBuilder, SCEVReference *> {
 public:
@@ -87,8 +91,8 @@ private:
     SCEVReference *visitAddRecExpr (const SCEVAddRecExpr *S) ;
     SCEVReference *visitSMaxExpr (const SCEVSMaxExpr *S) ;
     SCEVReference *visitUMaxExpr (const SCEVUMaxExpr *S) ;
-    SCEVReference *visitSMinExpr (const SCEVSMinExpr *S) ;
-    SCEVReference *visitUMinExpr (const SCEVUMinExpr *S) ;
+    //SCEVReference *visitSMinExpr (const SCEVSMinExpr *S) ;
+    //SCEVReference *visitUMinExpr (const SCEVUMinExpr *S) ;
     SCEVReference *visitUnknown (const SCEVUnknown *S) ;
     SCEVReference *visitCouldNotCompute (const SCEVCouldNotCompute* S) ;
 
@@ -120,8 +124,8 @@ private:
     Value *visitAddRecExpr (const SCEVAddRecExpr *S) ;
     Value *visitSMaxExpr (const SCEVSMaxExpr *S) ;
     Value *visitUMaxExpr (const SCEVUMaxExpr *S) ;
-    Value *visitSMinExpr (const SCEVSMinExpr *S) ;
-    Value *visitUMinExpr (const SCEVUMinExpr *S) ;
+    //Value *visitSMinExpr (const SCEVSMinExpr *S) ;
+    //Value *visitUMinExpr (const SCEVUMinExpr *S) ;
     Value *visitUnknown (const SCEVUnknown *S) ;
     Value *visitCouldNotCompute (const SCEVCouldNotCompute* S) ;
 

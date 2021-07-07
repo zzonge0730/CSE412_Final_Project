@@ -37,12 +37,20 @@ class scc_iterator
   : public std::iterator<std::forward_iterator_tag,
                          std::vector<typename GT::NodeType>, ptrdiff_t> {
   typedef typename GT::NodeType          NodeType;
+  // using NodeType = typename GT::NodeType;
   typedef typename GT::ChildIteratorType ChildItTy;
+  // using ChildItTy = typename GT::ChildIteratorType;
   typedef std::vector<NodeType*> SccTy;
+  // using SccTy = std::vector<NodeType*>;
   typedef std::iterator<std::forward_iterator_tag,
                         std::vector<typename GT::NodeType>, ptrdiff_t> super;
   typedef typename super::reference reference;
   typedef typename super::pointer pointer;
+  // using reference = GraphT&;
+  // using pointer = GraphT *;
+  // using iterator_category = std::forward_iterator_tag;
+  // using difference_type = std::ptrdiff_t;
+  // using value_type = GraphT;
 
   // The visit counters used to detect when a complete SCC is on the stack.
   // visitNum is the global counter.

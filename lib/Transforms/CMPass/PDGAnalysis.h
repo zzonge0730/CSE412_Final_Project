@@ -97,8 +97,8 @@ private:
         pdg->addEdge((Value*)instI, (Value*)instJ)->setMemMustType(true, must, dpType);
     }
 
-    static const StringSet<> libraryFunction;
-    static const StringSet<> externalThreadSafeFunctions;
+    static const std::unordered_set<std::string> libraryFunction;
+    static const std::unordered_set<std::string> externalThreadSafeFunctions;
 };
 
 #endif

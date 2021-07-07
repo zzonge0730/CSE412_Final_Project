@@ -75,7 +75,8 @@ class LoopIterationDomainSpaceAnalysis {
        * For memory accessing instructions with pointer operands that are known linear SCEVs,
        * track the access space for the instruction
        */
-      std::unordered_set<std::unique_ptr<MemoryAccessSpace>> accessSpaces;
+      //std::unordered_set<std::unique_ptr<MemoryAccessSpace>> accessSpaces;
+      std::unordered_set<MemoryAccessSpace *> accessSpaces;
       std::unordered_map<Instruction *, MemoryAccessSpace *> accessSpaceByInstruction;
 
       void computeMemoryAccessSpace (ScalarEvolution &SE) ;

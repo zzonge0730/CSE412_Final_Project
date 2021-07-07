@@ -30,6 +30,8 @@ autoconf/aclocal.m4
 autoconf/autom4te.cache
 compile_commands.json
 
+.vscode/
+
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).
 #==============================================================================#

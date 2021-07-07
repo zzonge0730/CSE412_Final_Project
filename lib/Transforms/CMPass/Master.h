@@ -2,7 +2,9 @@
 #define MASTER_H
 
 #include "llvm/Pass.h"
+#include "llvm/Analysis/CallGraph.h"
 
+#include "Hot.h"
 #include "PDG.h"
 #include "PDGAnalysis.h"
 #include "LoopDependenceInfo.h"
@@ -18,6 +20,7 @@ public:
     Master();
     ~Master();
     void getAnalysisUsage(AnalysisUsage &AU) const override;
+    bool doInitialization (Module& M) override;
     bool runOnModule(Module& M) override;
 
     std::vector<LoopDependenceInfo *> * getLoops(void);
@@ -46,11 +49,23 @@ public:
         std::vector<BasicBlock*>& loopExitBlocks
     );
 
+    Module * getProgram(void) const;
+
+    DominatorSummary * getDominators(Function * f);
+
+    Function * getEntryFunction(void) const;
+
+    PDG * getFunctionDependenceGraph(Function * f);
+
+    Hot * getHot();
+
 private:
     double minHot;
     Module * program;
     PDG * programDependenceGraph;
     PDGAnalysis * pdgAnalysis;
+
+    std::vector<uint32_t> loopThreads;
 
     std::unordered_map<BasicBlock*, uint32_t> loopHeaderToLoopIndexMap;
 
@@ -63,11 +78,13 @@ private:
     bool isLoopHot(LoopStructure * loopStructure, double minHot);
     bool isFunctionHot(Function * function, double minHot);
 
+    bool checkToGetLoopFilteringInfo(void);
+
     std::vector<Function*> * getModuleFunctionsReachableFrom(
         Module * M, Function * startingPoint
     );
 
-
+    Hot * hot;
 };
 
 #endif

@@ -11,13 +11,14 @@ Parallelizer::Parallelizer() : ModulePass {ID} {
 
 }
 
-void Parallelizer::getAnalysisUsage(AnalysisUsage &AU) {
+void Parallelizer::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<LoopInfo>();
     AU.addRequired<ScalarEvolution>();
     AU.addRequired<PostDominatorTree>(); // 
     AU.addRequired<DominatorTree>();
 
     AU.addRequired<Master>();
+    AU.addRequired<DOALL>();
     AU.setPreservesAll();
 }
 bool Parallelizer::runOnModule(Module& M) {
@@ -25,8 +26,10 @@ bool Parallelizer::runOnModule(Module& M) {
 
     //get the analysis pass classes we rely on
     Master& master = getAnalysis<Master>();
+    auto hot = master.getHot();
     //construct doall object
-    DOALL doall{M};
+    //DOALL doall{M};
+    DOALL& doall = getAnalysis<DOALL>();
 
     //fetch all the loops we want to parallelize
     errs() << "Parallelizer: Fetching the program loops\n";
@@ -86,7 +89,7 @@ bool Parallelizer::runOnModule(Module& M) {
     std::unordered_map<BasicBlock *, bool> modifiedBBs{};
     for (auto tree : forest->getTrees()) {
         //select the loop to parallelize
-        auto loopsToParallelize = this->selectTheOrderOfLoopsToParallelize(master, tree);
+        auto loopsToParallelize = this->selectTheOrderOfLoopsToParallelize(master, hot, tree); // TODO: ---zyy may not work
 
         //parallelize the loops
         for (auto loop : loopsToParallelize) {
@@ -208,4 +211,153 @@ void Parallelizer::printLoop(Loop* loop) {
         }
     }
 
+}
+
+
+std::vector<LoopDependenceInfo *> Parallelizer::selectTheOrderOfLoopsToParallelize(
+Master& master, Hot * hot, StayConnectedNestedLoopForestNode * tree
+) {
+
+    std::vector<LoopDependenceInfo *> selectedLoops{};
+
+
+    /*
+    * Compute the amount of time that can be saved by a parallelization technique per loop.
+    */
+    std::map<LoopDependenceInfo *, uint64_t> timeSavedLoops;
+    auto selector = [&master, &timeSavedLoops, hot](StayConnectedNestedLoopForestNode *n, uint32_t treeLevel) -> bool {
+
+      /*
+       * Fetch the loop.
+       */
+      auto ls = n->getLoop();
+      auto ldi = master.getLoop(ls);
+
+      /*
+       * Fetch the set of sequential SCCs.
+       */
+      auto sequentialSCCs = DOALL::getSCCsThatBlockDOALLToBeApplicable(ldi, master);
+
+      /*
+       * Find the biggest sequential SCC.
+       */
+      uint64_t biggestSCCTime = 0;
+      for (auto sequentialSCC : sequentialSCCs){
+
+        /*
+         * Fetch the time spent in the current SCC.
+         */
+        auto sequentialSCCTime = hot->getTotalInstructions(sequentialSCC);
+
+        /*
+         * Compute the biggest SCC.
+         */
+        if (sequentialSCCTime > biggestSCCTime){
+          biggestSCCTime = sequentialSCCTime;
+        }
+      }
+
+      /*
+       * Compute the maximum amount of time saved by any parallelization technique.
+       */
+      timeSavedLoops[ldi] = 0;
+      if (hot->getIterations(ls) > 0){
+        auto instsPerIteration = hot->getAverageTotalInstructionsPerIteration(ls);
+        auto instsInBiggestSCCPerIteration = ((double)biggestSCCTime) / ((double)hot->getIterations(ls));
+        assert(instsInBiggestSCCPerIteration <= instsPerIteration);
+        auto timeSavedPerIteration = (double)(instsPerIteration - instsInBiggestSCCPerIteration);
+        auto timeSaved = timeSavedPerIteration * hot->getIterations(ls);
+        timeSavedLoops[ldi] = (uint64_t)timeSaved;
+      }
+
+      return false;
+    };
+    tree->visitPreOrder(selector);
+
+    /*
+     * Filter out loops that should not be parallelized.
+     */
+    for (auto loopPair : timeSavedLoops){
+
+      /*
+       * Fetch the loop.
+       */
+      auto ldi = loopPair.first;
+
+      /*
+       * Compute the total amount of time saved by parallelizing this loop.
+       */
+      auto savedTimeTotal = ((double)timeSavedLoops[ldi]) / ((double) hot->getTotalInstructions());
+      savedTimeTotal *= 100;
+      
+      /*
+       * Check if the time saved is enough.
+       */
+      if (savedTimeTotal < 2){
+        continue ;
+      }
+
+      /*
+       * The loop is worth parallelizing it.
+       *
+       * Add it.
+       */
+      selectedLoops.push_back(ldi);
+    }
+
+    /*
+     * Sort the loops depending on the amount of time that can be saved by a parallelization technique.
+     */
+    auto compareOperator = [&timeSavedLoops](LoopDependenceInfo *l1, LoopDependenceInfo *l2){
+      auto s1 = timeSavedLoops[l1];
+      auto s2 = timeSavedLoops[l2];
+      if (s1 != s2){
+        return s1 > s2;
+      }
+
+      /*
+       * The loops have the same saved time.
+       * Sort them by nesting level.
+       */
+      auto l1LS = l1->getLoopStructure();
+      auto l2LS = l2->getLoopStructure();
+      return l1LS->getNestingLevel() < l2LS->getNestingLevel();
+    };
+    std::sort(selectedLoops.begin(), selectedLoops.end(), compareOperator);
+
+    /*
+     * Print the order and the savings.
+     */
+      errs() << "Parallelizer: LoopSelector: Start\n";
+      errs() << "Parallelizer: LoopSelector:   Order of loops and their maximum savings\n";
+      for (auto l : selectedLoops){
+
+        /*
+         * Fetch the loop information.
+         */
+        auto ls = l->getLoopStructure();
+        auto loopHeader = ls->getHeader();
+        auto loopFunction = ls->getFunction();
+
+        /*
+         * Compute the savings
+         */
+        auto savedTimeRelative = ((double)timeSavedLoops[l]) / ((double) hot->getTotalInstructions(ls));
+        auto savedTimeTotal = ((double)timeSavedLoops[l]) / ((double) hot->getTotalInstructions());
+        savedTimeRelative *= 100;
+        savedTimeTotal *= 100;
+
+        /*
+         * Print
+         */
+        errs() << "Parallelizer: LoopSelector:    Loop " << l->getID() << " " << ls->getID() << "\n";
+        errs() << "Parallelizer: LoopSelector:      Function: \"" << loopFunction->getName() << "\"\n";
+        errs() << "Parallelizer: LoopSelector:      Loop nesting level: " << ls->getNestingLevel() << "\n";
+        errs() << "Parallelizer: LoopSelector:      \"" << *loopHeader->getFirstNonPHI() << "\"\n";
+        errs() << "Parallelizer: LoopSelector:      Whole-program savings = " << savedTimeTotal << "%\n";
+        errs() << "Parallelizer: LoopSelector:      Loop savings = " << savedTimeRelative << "%)\n";
+      }
+      errs() << "Parallelizer: LoopSelector: End\n";
+
+    return selectedLoops;
 }

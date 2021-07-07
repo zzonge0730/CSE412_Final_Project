@@ -2,8 +2,10 @@
 #define MEMORYCLONINGANALYSIS_H
 
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/DataLayout.h"
 
 #include "LoopStructure.h"
 #include "DominatorSummary.h"
@@ -62,8 +64,8 @@ private:
         std::unordered_set<Instruction *> initialStoringInstructions;
         std::unordered_set<Instruction *> subsequentNonStoringInstructions;
     };
-    std::unordered_set<std::unique_ptr<OverrideSet>> overrideSets;
-
+    // std::unordered_set<std::unique_ptr<OverrideSet>> overrideSets;
+    std::unordered_set<OverrideSet *> overrideSets;
     bool identifyInitialStoringInstructions(DominatorSummary& ds);
     bool areOverrideSetsFullyCoveringTheAllocationSpace(void) const;
     bool isOverrideSetFullyCoveringTheAllocationSpace(OverrideSet *overrideSet) const;
@@ -81,7 +83,8 @@ public:
     std::unordered_set<ClonableMemoryLocation *> getClonableMemoryLocations(void) const;
 
 private:
-    std::unordered_set<std::unique_ptr<ClonableMemoryLocation>> clonableMemoryLocations;
+    // std::unordered_set<std::unique_ptr<ClonableMemoryLocation>> clonableMemoryLocations;
+    std::unordered_set<ClonableMemoryLocation *> clonableMemoryLocations;
 };
 
 #endif

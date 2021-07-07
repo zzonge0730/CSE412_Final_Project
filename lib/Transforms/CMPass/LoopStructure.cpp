@@ -1,5 +1,7 @@
 #include "LoopStructure.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/LoopInfoImpl.h"
+#include <utility>
 
 uint64_t LoopStructure::globalID = 0;
 
@@ -16,14 +18,15 @@ LoopStructure::LoopStructure(Loop* loop, LoopStructure* parentLoop) : parent{par
     this->preHeader = loop->getLoopPreheader();
 
     //set the basicblocks and latches of the loop
-    for (auto bb : loop->blocks()) {
-        orderedBBs.push_back(bb);
-        BBs.insert(bb);
-        if (loop->isLoopLatch(bb)) {
-            latchBBs.insert(bb);
+    // for (auto bb : loop->blocks()) {
+    for (auto BBIt = loop->block_begin(); BBIt != loop->block_end(); ++BBIt) {
+        orderedBBs.push_back(*BBIt);
+        BBs.insert(*BBIt);
+        if (loop->isLoopLatch(*BBIt)) {
+            latchBBs.insert(*BBIt);
         }
 
-        for (auto& inst : *bb) {
+        for (auto& inst : **BBIt) {
             //loop implementation of isLoopInvariant simply checks if the value
             //is in the loop, not if it changes between iterations
             if (loop->isLoopInvariant(&inst)) {
@@ -37,9 +40,9 @@ LoopStructure::LoopStructure(Loop* loop, LoopStructure* parentLoop) : parent{par
     loop->getExitBlocks(exits);
     this->exitBlocks = std::vector<BasicBlock *>(exits.begin(), exits.end());
 
-    SmallVector<std::pair<BasicBlock *, BasicBlock *>, 10> exitEdges;
-    loop->getExitEdges(exitEdges);
-    this->exitEdges = std::vector<std::pair<BasicBlock *, BasicBlock *>>(exitEdges.begin(), exitEdges.end());
+    SmallVector<std::pair<const BasicBlock *, const BasicBlock *>, 10> ExitEdges;
+    loop->getExitEdges(ExitEdges);
+    this->exitEdges = std::vector<std::pair<const BasicBlock *, const BasicBlock *>>(ExitEdges.begin(), ExitEdges.end());
 
     this->ID = LoopStructure::globalID++;
 }
@@ -125,7 +128,7 @@ std::vector<BasicBlock *> LoopStructure::getLoopExitBasicBlocks(void) const {
     return this->exitBlocks;
 }
 
-std::vector<std::pair<BasicBlock *, BasicBlock *>> LoopStructure::getLoopExitEdges(void) const {
+std::vector<std::pair<const BasicBlock *, const BasicBlock *>> LoopStructure::getLoopExitEdges(void) const {
     return this->exitEdges;
 }
 uint64_t LoopStructure::numberOfExitBasicBlocks(void) const {

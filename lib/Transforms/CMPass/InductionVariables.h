@@ -17,6 +17,8 @@
 
 using namespace llvm;
 
+class LoopGoverningIVAttribution;
+
 class InductionVariable {
 public:
     InductionVariable(LoopStructure * ls, InvariantManager& ivm,
@@ -117,7 +119,6 @@ private:
 
 };
 
-class LoopGoverningIVAttribution;
 
 class InductionVariableManager {
 public:

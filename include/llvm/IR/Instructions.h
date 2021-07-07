@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -91,6 +92,8 @@ public:
   PointerType *getType() const {
     return cast<PointerType>(Instruction::getType());
   }
+
+  Optional<uint64_t> getAllocationSizeInBits(const DataLayout &DL) const;
 
   /// getAllocatedType - Return the type that is being allocated by the
   /// instruction.
@@ -2140,6 +2143,19 @@ public:
     int Idx = getBasicBlockIndex(BB);
     assert(Idx >= 0 && "Invalid basic block argument!");
     return getIncomingValue(Idx);
+  }
+
+  /// ---zyy Set every incoming value(s) for block \p BB to \p V.
+  void setIncomingValueForBlock(const BasicBlock *BB, Value *V) {
+    assert(BB && "PHI node got a null basic block!");
+    bool Found = false;
+    for (unsigned Op = 0, NumOps = getNumOperands(); Op != NumOps; ++Op)
+      if (getIncomingBlock(Op) == BB) {
+        Found = true;
+        setIncomingValue(Op, V);
+      }
+    (void)Found;
+    assert(Found && "Invalid basic block argument to set!");
   }
 
   /// hasConstantValue - If the specified PHI node always merges together the

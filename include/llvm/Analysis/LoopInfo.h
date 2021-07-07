@@ -163,6 +163,19 @@ public:
     return false;
   }
 
+  //---zyy--
+  bool isLoopLatch(const BlockT *BB) const {
+    assert(!isInvalid() && "Loop not in a valid state!");
+    assert(contains(BB) && "block does not belong to the loop");
+
+    BlockT *Header = getHeader();
+
+    typedef GraphTraits<Inverse<BlockT*> > InvBlockTraits;
+    typename InvBlockTraits::ChildIteratorType PredBegin = InvBlockTraits::child_begin(Header);
+    typename InvBlockTraits::ChildIteratorType PredEnd = InvBlockTraits::child_end(Header);
+    return std::find(PredBegin, PredEnd, BB) != PredEnd;
+  }
+
   /// getNumBackEdges - Calculate the number of back edges to the loop header
   ///
   unsigned getNumBackEdges() const {

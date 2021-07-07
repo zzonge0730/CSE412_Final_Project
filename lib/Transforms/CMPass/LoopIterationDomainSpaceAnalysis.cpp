@@ -1,4 +1,7 @@
 #include "LoopIterationDomainSpaceAnalysis.h"
+#include "Utils.h"
+#include "llvm/IR/InstrTypes.h"
+
 
 LoopIterationDomainSpaceAnalysis::LoopIterationDomainSpaceAnalysis (
   LoopSummary &loops,
@@ -165,10 +168,11 @@ void LoopIterationDomainSpaceAnalysis::computeMemoryAccessSpace (ScalarEvolution
     /*
      * Construct memory space object to track this accessor
      */
-    auto element = accessSpaces.insert(std::move(
-      std::make_unique<LoopIterationDomainSpaceAnalysis::MemoryAccessSpace>(memoryAccessor)
-    ));
-    auto memAccessSpace = (*element.first).get();
+    // auto element = accessSpaces.insert(std::move(
+    //   make_unique<LoopIterationDomainSpaceAnalysis::MemoryAccessSpace>(memoryAccessor)
+    // ));
+    auto element = accessSpaces.insert(std::move(new LoopIterationDomainSpaceAnalysis::MemoryAccessSpace(memoryAccessor)));
+    auto memAccessSpace = (*element.first);
     accessSpaceByInstruction.insert(std::make_pair(memoryAccessor, memAccessSpace));
     memAccessSpace->memoryAccessorSCEV = SE.getSCEV(memAccessSpace->memoryAccessor);
 
@@ -299,7 +303,7 @@ void LoopIterationDomainSpaceAnalysis::identifyNonOverlappingAccessesBetweenIter
     /*
      * Each inner dimension's accesses must be bounded not to spill over into another dimension 
      */
-    if (!isInnerDimensionSubscriptsBounded(SE, memAccessSpace.get())) continue;
+    if (!isInnerDimensionSubscriptsBounded(SE, memAccessSpace)) continue;
 
     // errs() << "\tAccessor has bounded inner dimension accesses\n";
 
@@ -352,7 +356,7 @@ void LoopIterationDomainSpaceAnalysis::identifyNonOverlappingAccessesBetweenIter
 
     // memAccessSpace->memoryAccessor->print(errs() << "Is non-overlapping: "); errs() << "\n";
 
-    nonOverlappingAccessesBetweenIterations.insert(memAccessSpace.get());
+    nonOverlappingAccessesBetweenIterations.insert(memAccessSpace);
   }
 
   // errs() << "Non overlapping size: " << nonOverlappingAccessesBetweenIterations.size() << "\n";
@@ -488,8 +492,9 @@ bool LoopIterationDomainSpaceAnalysis::isOneToOneFunctionOnIV(
     );
     if (!isOneToOne) return false;
 
-    for (auto &use : inst->operands()) {
-      auto usedValue = use.get();
+    // for (auto &use : inst->operands()) {
+    for (User::op_iterator OpIt = inst->op_begin(); OpIt != inst->op_end(); ++OpIt ) {
+      auto usedValue = (*OpIt).get();
 
       /*
        * Ignore loop externals and constants as they are computed outside the loop

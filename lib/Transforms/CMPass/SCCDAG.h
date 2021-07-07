@@ -5,6 +5,9 @@
 #include "PDGAnalysis.h"
 #include "SCC.h"
 
+#include "llvm/ADT/SCCIterator.h"
+#include "llvm/IR/Value.h"
+
 #include "BitMatrix.h"
 
 /*

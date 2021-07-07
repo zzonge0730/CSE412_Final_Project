@@ -55,7 +55,7 @@ public:
 
     std::vector<BasicBlock *> getLoopExitBasicBlocks(void) const;
 
-    std::vector<std::pair<BasicBlock *, BasicBlock *>> getLoopExitEdges(void) const;
+    std::vector<std::pair<const BasicBlock *, const BasicBlock *>> getLoopExitEdges(void) const;
 
     uint64_t numberOfExitBasicBlocks(void) const;
 
@@ -88,7 +88,7 @@ private:
 
     //
     std::vector<BasicBlock *> exitBlocks;
-    std::vector<std::pair<BasicBlock *, BasicBlock *>> exitEdges;
+    std::vector<std::pair<const BasicBlock *, const BasicBlock *>> exitEdges;
 
     static uint64_t globalID;
 

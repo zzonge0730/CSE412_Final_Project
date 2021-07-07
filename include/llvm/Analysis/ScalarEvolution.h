@@ -631,6 +631,13 @@ namespace llvm {
     const SCEV *getUnknown(Value *V);
     const SCEV *getCouldNotCompute();
 
+
+    /// ---zyy --- Return a SCEV for the constant 0 of a specific type.
+    const SCEV *getZero(Type *Ty) { return getConstant(Ty, 0); }
+
+    /// ---zyy --- Return a SCEV for the constant 1 of a specific type.
+    const SCEV *getOne(Type *Ty) { return getConstant(Ty, 1); }
+
     /// getSizeOfExpr - Return an expression for sizeof AllocTy that is type
     /// IntTy
     ///
@@ -873,6 +880,14 @@ namespace llvm {
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
     virtual void print(raw_ostream &OS, const Module* = 0) const;
     virtual void verifyAnalysis() const;
+
+    // ---zyy---
+    void collectParametricTerms(const SCEV * Expr, SmallVectorImpl<const SCEV *>& Terms);
+
+    // ---zyy---
+    void findArrayDimensions(SmallVectorImpl<const SCEV *>& Terms, SmallVectorImpl<const SCEV * >& Sizes,
+    const SCEV * ElementSize);
+
 
   private:
     /// Compute the backedge taken count knowing the interval difference, the

@@ -738,11 +738,18 @@ public:
     return getInversePredicate(getPredicate());
   }
 
+  //--zyy---
+  Predicate getNonStrictPredicate() const {
+    return getNonStrictPredicate(getPredicate());
+  }
+
   /// For example, EQ -> NE, UGT -> ULE, SLT -> SGE,
   ///              OEQ -> UNE, UGT -> OLE, OLT -> UGE, etc.
   /// @returns the inverse predicate for predicate provided in \p pred.
   /// @brief Return the inverse of a given predicate
   static Predicate getInversePredicate(Predicate pred);
+
+  static Predicate getNonStrictPredicate(Predicate pred);
 
   /// For example, EQ->EQ, SLE->SGE, ULT->UGT,
   ///              OEQ->OEQ, ULE->UGE, OLT->OGT, etc.

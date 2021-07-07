@@ -1,4 +1,7 @@
 #include "MemoryCloningAnalysis.h"
+#include "Utils.h"
+
+
 
 MemoryCloningAnalysis::MemoryCloningAnalysis(LoopStructure * loopS, DominatorSummary& ds, PDG * loopPDG) {
     assert(loopS != nullptr);
@@ -6,7 +9,7 @@ MemoryCloningAnalysis::MemoryCloningAnalysis(LoopStructure * loopS, DominatorSum
     //collect allocations at the top of the function
     //the assumption is that all AllocaInst are stated before any other instructions
     std::unordered_set<AllocaInst *> allocations;
-    auto function = loopS->getFunction();
+    Function * function = loopS->getFunction();
     auto& entryBlock = function->getEntryBlock();
 
     for (auto& inst : entryBlock) {
@@ -22,10 +25,15 @@ MemoryCloningAnalysis::MemoryCloningAnalysis(LoopStructure * loopS, DominatorSum
     //fetch the data layout
     auto& dataLayout = function->getParent()->getDataLayout();
 
+    //const DataLayout tmpDL(StringRef(dataLayout));
+
+    const DataLayout tmp(function->getParent());
+
     //check each stack object's size
     for (auto allocation : allocations) {
         //check if we know the size in bits of the stack object
-        auto sizeInBitsOptional = allocation->getAllocationSizeInBits(dataLayout);
+        // auto sizeInBitsOptional = allocation->getAllocationSizeInBits(dataLayout);
+        auto sizeInBitsOptional = allocation->getAllocationSizeInBits(tmp);
         if (!sizeInBitsOptional.hasValue()) {
             continue;
         }
@@ -34,7 +42,8 @@ MemoryCloningAnalysis::MemoryCloningAnalysis(LoopStructure * loopS, DominatorSum
         auto sizeInBits = sizeInBitsOptional.getValue();
 
         //check if the stack object is clonable
-        auto location = std::make_unique<ClonableMemoryLocation>(allocation, sizeInBits, loopS, ds, loopPDG);
+        //auto location = std::move(make_unique<ClonableMemoryLocation>(allocation, sizeInBits, loopS, ds, loopPDG));
+        auto location = new ClonableMemoryLocation(allocation, sizeInBits, loopS, ds, loopPDG);
         if (!location->isClonableLocation()) {
             continue;
         }
@@ -47,7 +56,7 @@ MemoryCloningAnalysis::MemoryCloningAnalysis(LoopStructure * loopS, DominatorSum
 std::unordered_set<ClonableMemoryLocation *> MemoryCloningAnalysis::getClonableMemoryLocations (void) const {
     std::unordered_set<ClonableMemoryLocation *> locations{};
     for (auto &location : this->clonableMemoryLocations) {
-        locations.insert(location.get());
+        locations.insert(location);
     }
     return locations;
 }
@@ -59,21 +68,21 @@ const ClonableMemoryLocation * MemoryCloningAnalysis::getClonableMemoryLocationF
    */
   for (auto &location : this->clonableMemoryLocations) {
     if (location->getAllocation() == I) {
-      return location.get();
+      return location;
     }
     if (location->isInstructionCastOrGEPOfLocation(I)) {
-      return location.get();
+      return location;
     }
     if (location->isInstructionLoadingLocation(I)) {
-      return location.get();
+      return location;
     }
     if (location->isInstructionStoringLocation(I)) {
-      return location.get();
+      return location;
     }
     if (auto callInst = dyn_cast<CallInst>(I)){
       if (callInst->isLifetimeStartOrEnd()){
         auto ptr = callInst->getArgOperand(1);
-        auto loc = location.get();
+        auto loc = location;
         if (loc->mustAliasMemoryLocationWithinObject(ptr)){
           return loc;
         }
@@ -279,7 +288,7 @@ bool ClonableMemoryLocation::isMemCpyInstrinsicCall (CallInst *call) {
   auto calledFn = call->getCalledFunction();
   if (!calledFn || !calledFn->hasName()) return false;
   auto name = calledFn->getName();
-  std::string nameString = std::string(name.bytes_begin(), name.bytes_end());
+  std::string nameString = std::string(name);
   return nameString.find("llvm.memcpy") != std::string::npos;
 }
 
@@ -524,10 +533,11 @@ bool ClonableMemoryLocation::identifyInitialStoringInstructions (DominatorSummar
     // errs() << "\tIs not dominated by current override set\n";
     // nonStoringBlock->printAsOperand(errs() << "\tCreating set: "); errs() << "\n";
 
-    auto overrideSet = std::make_unique<OverrideSet>();
+    //auto overrideSet = std::move(make_unique<OverrideSet>());
+    auto overrideSet = new OverrideSet();
     overrideSet->dominatingBlockOfNonStoringInsts = nonStoringBlock;
     overrideSet->subsequentNonStoringInstructions.insert(nonStoringInstruction);
-    //overrideSets.insert(std::move(overrideSet));
+    //this->overrideSets.insert(std::move(overrideSet));
     this->overrideSets.insert(std::move(overrideSet));
   }
 
@@ -571,7 +581,7 @@ bool ClonableMemoryLocation::identifyInitialStoringInstructions (DominatorSummar
 
 bool ClonableMemoryLocation::areOverrideSetsFullyCoveringTheAllocationSpace (void) const {
   for (auto &overrideSet : overrideSets) {
-    if (!this->isOverrideSetFullyCoveringTheAllocationSpace(overrideSet.get())) {
+    if (!this->isOverrideSetFullyCoveringTheAllocationSpace(overrideSet)) {
       return false;
     }
   }
@@ -580,7 +590,7 @@ bool ClonableMemoryLocation::areOverrideSetsFullyCoveringTheAllocationSpace (voi
 }
 
 bool ClonableMemoryLocation::isOverrideSetFullyCoveringTheAllocationSpace (
-  ClonableMemoryLocation::OverrideSet *overrideSet
+  OverrideSet *overrideSet
 ) const {
   std::unordered_set<int64_t> structElementsStoredTo;
   for (auto storingInstruction : overrideSet->initialStoringInstructions) {
@@ -609,7 +619,8 @@ bool ClonableMemoryLocation::isOverrideSetFullyCoveringTheAllocationSpace (
         /*
          * Only supporting struct GEP accesses that match the allocation's struct type
          */
-        auto sourceElementTy = gep->getSourceElementType();
+        // auto sourceElementTy = gep->getSourceElementType();
+        auto sourceElementTy = gep->getType();
         if (!sourceElementTy->isStructTy()) continue;
         if (sourceElementTy != this->allocatedType) continue;
 

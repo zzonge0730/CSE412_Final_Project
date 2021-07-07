@@ -160,8 +160,8 @@ LoopGoverningIVAttribution::LoopGoverningIVAttribution (InductionVariable &iv, S
     return ;
 }
 
-InductionVariable &LoopGoverningIVAttribution::getInductionVariable(void) const {
-    return IV;
+InductionVariable & LoopGoverningIVAttribution::getInductionVariable(void) const {
+    return this->IV;
 }
 
 CmpInst *LoopGoverningIVAttribution::getHeaderCmpInst(void) const {

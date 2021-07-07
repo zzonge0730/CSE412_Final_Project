@@ -53,7 +53,7 @@ LoopStructure * LoopDependenceInfo::getLoopStructure(void) const {
 
 void LoopDependenceInfo::fetchLoopAndBBInfo(Loop * loop, ScalarEvolution& se) {
     //compute the trip counts of all loops in the loop tree that starts with loop
-    auto loopTripCount = se.getSmallConstantTripCount(loop);
+    auto loopTripCount = se.getSmallConstantTripCount(loop, loop->getExitBlock());
 
     if (loopTripCount > 0) {
         this->compileTimeKnownTripCount = true;

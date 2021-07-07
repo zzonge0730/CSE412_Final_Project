@@ -65,8 +65,9 @@ SCEVReference *ReferenceTreeBuilder::createReferenceOfSingleInScopeValue(const S
 SCEVReference *ReferenceTreeBuilder::createReferenceOfNArySCEV (const SCEVNAryExpr *S) {
   auto compositeReference = new SCEVReference(mapToSingleInScopeValue(S), S);
 
-  for (auto opS : S->operands()) {
-    auto operandReference = visit(opS);
+  // for (auto opS : S->operands()) {
+  for (SCEVNAryExpr::op_iterator OpIt = S->op_begin(); OpIt != S->op_end(); ++OpIt) {
+    auto operandReference = visit(*OpIt);
     if (!operandReference) {
       break;
     }
@@ -155,13 +156,13 @@ SCEVReference *ReferenceTreeBuilder::visitUMaxExpr(const SCEVUMaxExpr *S) {
   return createReferenceOfNArySCEV(S);
 }
 
-SCEVReference *ReferenceTreeBuilder::visitSMinExpr(const SCEVSMinExpr *S) {
-  return createReferenceOfNArySCEV(S);
-}
+// SCEVReference *ReferenceTreeBuilder::visitSMinExpr(const SCEVSMinExpr *S) {
+//   return createReferenceOfNArySCEV(S);
+// }
 
-SCEVReference *ReferenceTreeBuilder::visitUMinExpr(const SCEVUMinExpr *S) {
-  return createReferenceOfNArySCEV(S);
-}
+// SCEVReference *ReferenceTreeBuilder::visitUMinExpr(const SCEVUMinExpr *S) {
+//   return createReferenceOfNArySCEV(S);
+// }
 
 SCEVReference *visitCouldNotCompute (const SCEVCouldNotCompute* S) {
   return nullptr;
@@ -172,11 +173,12 @@ SCEVReference *visitCouldNotCompute (const SCEVCouldNotCompute* S) {
  */
 
 SCEVValueMapper::SCEVValueMapper (ScalarEvolution &SE, Function &F) {
-  for (auto &A : F.args()) {
-    if (!SE.isSCEVable(A.getType())) continue;
-    auto scev = SE.getSCEV(&A);
-    scevToValues[scev].insert(&A);
-    valueToSCEV[&A] = scev;
+  // for (auto &A : F.args()) {
+  for (Function::arg_iterator ArgIt = F.arg_begin(); ArgIt != F.arg_end(); ++ArgIt) {
+    if (!SE.isSCEVable((*ArgIt).getType())) continue;
+    auto scev = SE.getSCEV(&*ArgIt);
+    scevToValues[scev].insert(&*ArgIt);
+    valueToSCEV[&*ArgIt] = scev;
   }
 
   for (auto &B : F) {

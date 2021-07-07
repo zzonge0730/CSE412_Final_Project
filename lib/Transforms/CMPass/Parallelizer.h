@@ -36,7 +36,7 @@ private:
     void printLoop(Loop* loop);
 
     std::vector<LoopDependenceInfo *> selectTheOrderOfLoopsToParallelize(
-        Master& master, StayConnectedNestedLoopForestNode * tree
+        Master& master, Hot * hot, StayConnectedNestedLoopForestNode * tree
     );
 
 

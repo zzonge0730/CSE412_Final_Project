@@ -42,6 +42,8 @@ namespace llvm {
       SCEV(ID, scConstant), V(v) {}
   public:
     ConstantInt *getValue() const { return V; }
+    //---zyy
+    const APInt &getAPInt() const { return getValue()->getValue(); }
 
     Type *getType() const { return V->getType(); }
 
@@ -553,6 +555,31 @@ namespace llvm {
   void visitAll(const SCEV *Root, SV& Visitor) {
     SCEVTraversal<SV> T(Visitor);
     T.visitAll(Root);
+  }
+
+  // --- zyy---
+  template <typename PredTy>
+  bool SCEVExprContains (const SCEV * Root, PredTy Pred) {
+    struct FindClosure {
+      bool Found = false;
+      PredTy Pred;
+
+      FindClosure(PredTy Pred) : Pred(Pred) {}
+
+      bool follow(const SCEV * S) {
+        if (!Pred(S)) 
+          return true;
+        
+        Found = true;
+        return false;
+      }
+
+      bool isDone() const {return Found;}
+    };
+
+    FindClosure FC(Pred);
+    visitAll(Root, FC);
+    return FC.Found;
   }
 
   typedef DenseMap<const Value*, Value*> ValueToValueMap;

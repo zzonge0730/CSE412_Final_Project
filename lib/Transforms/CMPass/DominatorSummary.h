@@ -25,7 +25,7 @@ public:
     BasicBlock *getBlock (void) const ;
     DomNodeSummary *getParent (void) ;
     std::vector<DomNodeSummary *> getChildren (void) ;
-    unsigned getLevel (void) const ;
+    //unsigned getLevel (void) const ;
     DomNodeSummary *getIDom (void) ;
 
     raw_ostream &print (raw_ostream &stream, std::string prefixToUse = "") ;

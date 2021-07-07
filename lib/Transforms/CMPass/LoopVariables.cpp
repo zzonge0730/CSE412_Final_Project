@@ -21,13 +21,14 @@ EvolutionUpdate::EvolutionUpdate (Instruction *updateInstruction, SCC *dataMemor
   }
   this->newValue = updateInstruction;
 
-  for (auto &use : updateInstruction->operands()) {
-    auto usedValue = use.get();
+  // for (auto &use : updateInstruction->operands()) {
+  for (User::op_iterator OpIt = updateInstruction->op_begin(); OpIt != updateInstruction->op_end(); ++OpIt ) {
+    auto usedValue = (*OpIt).get();
 
     if (dataMemoryVariableSCC->isInternalNode(usedValue)) {
-      internalValuesUsed.insert(&use);
+      internalValuesUsed.insert(&*OpIt);
     } else {
-      externalValuesUsed.insert(&use);
+      externalValuesUsed.insert(&*OpIt);
     }
   }
 }
