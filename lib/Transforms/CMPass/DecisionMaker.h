@@ -13,6 +13,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <iterator>
+#include <utility>
 
 using namespace llvm;
 
@@ -60,6 +61,8 @@ public:
         return profitableJoinPoints.end();
     }
 
+    std::vector<std::pair<std::set<CallInst *>, uint32_t>> getSafeCheckToBeMergedGroup();
+
 private:
     //
     std::vector<std::pair<CallInst *, std::set<Instruction *>>> allJoinPoints;
@@ -67,6 +70,12 @@ private:
     std::set<Function *> funcToBeSpawned;
 
     std::map<Function *, FuncStatus> funcStatusMap;
+
+    //safeCheckGroup - 0, means that latter check move forward
+    //safeCheckGroup - 1, menas that former check move backward
+    //safeCheckGroup - 2, init state
+    //safeCheckGroup - 3, we can't move any thing
+    std::vector<std::pair<std::set<CallInst *>, uint32_t>> safeCheckToBeMergedGroup;
 
     std::set<Instruction*> findAllJoinPoints(PDG * pdg, CallInst *CI, Function &F);
     //bool hasJoinPointInBlock(std::set<Instruction *> points, BasicBlock *);
@@ -80,11 +89,15 @@ private:
     //estimate cost between spawnable function and join points
     uint64_t getSafeCheckBetweenJoinPointCost(Function &, CallInst *, Instruction */*,LoopInfo &, ScalarEvolution &*/);
     
+    uint64_t getSafeCheckBetweenSafeChecktCost(Function &, CallInst *, CallInst *);
+
     //need a profitabilty class to identify the cost of a function
     uint64_t getSafeCheckCost(CallInst * SafeCheck);
 
     //spawnable cost, is a constant variable ?
     uint64_t getSpawnableCost();
+
+    uint32_t getDirection(PDG * pdg, Function &, CallInst *, CallInst *);
 
     // using join_iteratror = decltype(profitableJoinPoints.begin());
     // join_iterator join_begin() { return profitableJoinPoints.begin();}

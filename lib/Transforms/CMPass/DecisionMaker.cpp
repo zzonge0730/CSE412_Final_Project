@@ -23,6 +23,7 @@ DecisionMaker::~DecisionMaker() {
     profitableJoinPoints.clear();
     funcToBeSpawned.clear();
     funcStatusMap.clear();
+    safeCheckToBeMergedGroup.clear();
 }
 
 void DecisionMaker::releaseMemory() {
@@ -30,6 +31,7 @@ void DecisionMaker::releaseMemory() {
     profitableJoinPoints.clear();
     funcToBeSpawned.clear();
     funcStatusMap.clear();
+    safeCheckToBeMergedGroup.clear();
 }
 
 void DecisionMaker::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -62,10 +64,20 @@ bool DecisionMaker::runOnModule(Module &M) {
         ++CGI;
     }
 
+    errs() << "-----print safe check group----\n";
+    for (auto groupPair : this->safeCheckToBeMergedGroup) {
+        errs() << "---vvvv---direction: " << groupPair.second << "\n";
+
+        for (auto group : groupPair.first) {
+            errs() << "~~CallInst: " << *group << "\n";
+        }
+    }
+
     errs() << "-----print all join points------\n";
+    
 
     //findAllProfitableJoinPoints
-    for (auto callPair : allJoinPoints) {
+    for (auto callPair : allJoinPoints) { // safecheck : set of joinPoints
         //for each CallInst and joinpoints pair
         //get safecheckcost
         uint64_t safeCheckCost = getSafeCheckCost(callPair.first);
@@ -187,21 +199,108 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
     for (CallGraphSCC::iterator node = SCC.begin(), End = SCC.end(); node != End; ++node) {
         Function * func = (*node)->getFunction();
         if (func == nullptr || func == NULL || func->isDeclaration()) {
-            errs() << "DecisionMaker::processSCCForJoinPoints, func is null or declaration...\n";
+            errs() << "DM::processSCCForJoinPoints, func is null or declaration...\n";
             continue;
         }
 
+        errs() << "DM:: func is "<< func->getName() << "...\n";
         for (BasicBlock &BB : *func) {
+            CallInst * lastCallInst = nullptr;
+            std::set<CallInst *> safeCheckGroup;
+            uint32_t direction = 2; // 2 - init, 0 - move forward, 1- move backward, 3 - stand
+            uint32_t downUpCornerCase = 0; // flag = downUpCornerCase << 2 + direction; decode , direction = xx & 0x0000 0003, cornerCase = (flag >> 2 );
             for (Instruction &I : BB) {
                 if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                     if (IsSafeCheckCall(CI)) {
                         //use pdg to get the corresponding join point
                         std::set<Instruction*> joinpoints = findAllJoinPoints(pdg, CI, *func);
                         allJoinPoints.emplace_back(CI, joinpoints);
+                        errs() << "Decision::CI is: " << *CI << "\n";
+                        if (lastCallInst == nullptr) {
+                            safeCheckGroup.insert(CI);
+                        } else {
+                            errs() << "Decision::lastCallInst is: " << *lastCallInst << "\n";
+                            uint32_t newDirection = getDirection(pdg, *func, lastCallInst, CI); // dependence analysis
+                            errs() << "DecisionMaker::direction: " << direction << ", newDirection: " << newDirection << ", safeCheckGroupSize: " << safeCheckGroup.size() << "\n";
+                            uint32_t betweenCost = getSafeCheckBetweenSafeChecktCost(*func, lastCallInst, CI);
+                            uint64_t safeCheckCostLast = getSafeCheckCost(lastCallInst);
+                            uint64_t safeCheckCostCur = getSafeCheckCost(CI);
+                            if (direction != 2) { // 0 1 3
+                                if (newDirection == direction) { // 0-0, 1-1, 3-3
+                                    if (newDirection != 3) {//0-0, 1-1
+                                        if (true /*merge safecheck is profitable*/) {
+                                            safeCheckGroup.insert(CI);
+                                            continue;
+                                        }
+                                    } else { //3-3
+                                        safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
+                                        safeCheckGroup.clear();
+                                        safeCheckGroup.insert(CI);
+                                    }
+
+                                } else { // newDirection != direction 0-1, 1-0, 0-3,3-0, 1-3,3-1
+                                    //may be more aggressive approach
+                                    if (newDirection == 3) {//3-0, 3-1
+                                        
+                                        safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
+                                        safeCheckGroup.clear();
+                                        safeCheckGroup.insert(CI);
+                                        direction = newDirection;
+                                        downUpCornerCase = 0;
+                                    } else if (newDirection == 0) { // 0-3, 0-1
+                                        if (direction == 3) {
+                                            safeCheckGroup.insert(CI);
+                                            direction = newDirection;
+                                            continue;
+                                        } else if (direction == 1) { //special case
+                                            downUpCornerCase = safeCheckGroup.size();
+                                            safeCheckGroup.insert(CI);
+                                            direction = newDirection;
+                                            continue;
+                                        }
+                                    } else if (newDirection == 1) { // 1-3, 1-0
+                                        if (direction == 3) {
+                                            safeCheckGroup.insert(CI);
+                                            direction = newDirection;
+                                            continue;
+                                        } else if (direction == 0) {
+                                            safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
+                                            safeCheckGroup.clear();
+                                            safeCheckGroup.insert(CI);
+                                            direction = newDirection;
+                                            downUpCornerCase = 0;
+                                        }
+                                    }
+
+
+                                }
+                            } else { // direction == 2
+                                if (newDirection == 3) {
+                                    safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + newDirection));
+                                    safeCheckGroup.clear();
+                                    safeCheckGroup.insert(CI);
+                                    direction = 2;
+                                } else {
+                                    direction = newDirection;
+                                    safeCheckGroup.insert(CI);
+                                }
+                                
+                            }
+
+                        }
+
+
+                        lastCallInst = CI;
                     }
                 }
             }
+            if (safeCheckGroup.size() != 0) {
+                if (downUpCornerCase == 0) safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
+                else safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
+            }
+            
         }
+
     }
 }
 
@@ -292,9 +391,9 @@ void DecisionMaker::processSCCForFuncStatusMap(CallGraphSCC &SCC) {
             continue;
         }
         //getAnalysis<ScalarEvolution>();
-        errs() << "DecisionMaker-274\n";
+        // errs() << "DecisionMaker-274\n";
         FuncStatus stats = calculateFuncStatus(*func/*, getAnalysis<LoopInfo>(*func), getAnalysis<ScalarEvolution>(*func)*/);
-        errs() << "DecisionMaker-276\n";
+        // errs() << "DecisionMaker-276\n";
         stats.totalCost = stats.numOfInst;
         for (auto& fun : stats.numofFuncCalls) {
             if (fun.first->isDeclaration()) {
@@ -351,7 +450,7 @@ void DecisionMaker::processSCCForFuncStatusMap(CallGraphSCC &SCC) {
 }
 
 FuncStatus DecisionMaker::calculateFuncStatus(Function &F/*, LoopInfo &LI, ScalarEvolution &SE*/) {
-    errs() << "DecisionMaker-333\n";
+    // errs() << "DecisionMaker-333\n";
     FuncStatus stats{};
     for (BasicBlock &BB : F) {
         uint64_t bbInst = 0u;
@@ -420,6 +519,194 @@ std::set<Function*> DecisionMaker::getFuncToBeSpawned() {
     return this->funcToBeSpawned;
 }
 
+std::vector<std::pair<std::set<CallInst *>, uint32_t>> DecisionMaker::getSafeCheckToBeMergedGroup() {
+    return this->safeCheckToBeMergedGroup;
+}
+
 // std::map<CallInst *, std::set<Instruction *>> DecisionMaker::getAllJoinPoints() {
 //     return this->allJoinPoints;
 // }
+
+uint64_t DecisionMaker::getSafeCheckBetweenSafeChecktCost(Function & F, CallInst * lastCallInst, CallInst * CI) {
+    return 1;
+}
+// uint64_t DecisionMaker::getSafeCheckCost(CallInst * lastCallInst) {
+//     return 1;
+// }
+
+
+uint32_t DecisionMaker::getDirection(PDG * pdg, Function & F, CallInst * lastCallInst, CallInst * curCallInst) {
+
+    // bool twoCallInstInPDG = false;
+    // for (auto edge : pdg->getEdges()) {
+    //     auto fromNodeT = edge->getOutgoingNode()->getT();
+    //     auto toNodeT = edge->getIncomingNode()->getT();
+    //     if (cast<Instruction>(lastCallInst) == cast<Instruction>(fromNodeT) && 
+    //         cast<Instruction>(curCallInst) == cast<Instruction>(toNodeT)) {
+    //             twoCallInstInPDG = true;
+    //         if (edge->dataDepToString() == "RAW" ||
+    //             edge->dataDepToString() == "WAR" || 
+    //             edge->dataDepToString() == "WAW") {
+    //                 errs() << "getDirection---From: " << *cast<Instruction>(fromNodeT) << "\n";
+    //                 errs() << "getDirection---To: " << *cast<Instruction>(toNodeT) << "\n";
+
+    //                 //need to determine the dependency between check code and original code
+    //                 BasicBlock * curBB = lastCallInst->getParent();
+    //                 if (curBB != curCallInst->getParent()) {
+    //                     errs() << "ERROR, getDirection, lastCallInst and CurCallInst should be in the same basicblock...\n";
+    //                 } else {
+    //                     //in the same basic block
+    //                     bool hasStart = false;
+    //                     uint8_t direction = 2;
+    //                     bool lastToInstDep = false;
+    //                     bool instToCurDep = false;
+    //                     for (Instruction& I : *curBB ) {
+    //                         if (dyn_cast<Instruction>(curCallInst) == &I) {
+    //                             break;
+    //                         }
+
+    //                         if (dyn_cast<Instruction>(lastCallInst) == &I) {
+    //                             hasStart = true;
+    //                         }
+
+    //                         if (hasStart) {
+    //                             //determine cur inst dependence with lastInst and curInst
+    //                             for (auto subedge : pdg->getEdges()) {
+    //                                 auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+    //                                 auto toNodeSubT = subedge->getIncomingNode()->getT();
+
+    //                                 /*
+    //                                 lastCallInst 1 - from 
+    //                                 |
+    //                                 (may be a dependence)
+    //                                 |     
+    //                                 inst         1 - to ; 2 - from
+    //                                 |
+    //                                 (may be a dependence)
+    //                                 |
+    //                                 curCallInst        2 - to
+    //                                 */
+    //                                 if (cast<Instruction>(lastCallInst) == cast<Instruction>(fromNodeSubT) &&
+    //                                 cast<Instruction>(toNodeSubT) == &I) {
+    //                                     if (subedge->dataDepToString() == "RAW" ||
+    //                                         subedge->dataDepToString() == "WAR" ||
+    //                                         subedge->dataDepToString() == "WAW") {
+    //                                             //means the lastCallInst can not move backward
+    //                                             lastToInstDep = true;
+    //                                     }
+    //                                 }
+
+    //                                 if (cast<Instruction>(fromNodeSubT) == &I &&
+    //                                 cast<Instruction>(curCallInst) == cast<Instruction>(toNodeSubT)) {
+    //                                     if (subedge->dataDepToString() == "RAW" ||
+    //                                         subedge->dataDepToString() == "WAR" ||
+    //                                         subedge->dataDepToString() == "WAW") {
+    //                                             instToCurDep = true;
+    //                                     }
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+
+    //                     if (lastToInstDep == false && instToCurDep == false) {
+    //                         direction = 0;
+    //                     } else if (lastToInstDep == false && instToCurDep == true) {
+    //                         direction = 1;
+    //                     } else if (lastToInstDep == true && instToCurDep == false) {
+    //                         direction = 0;
+    //                     } else { //lastToInstDep == true && instToCurDep == true
+    //                         //we can't move any thing
+    //                         direction = 3;
+    //                     }
+    //                     return direction;
+    //                 }
+
+    //         } else {
+    //             errs() << "getDirection---From: " << *cast<Instruction>(fromNodeT) << "\n";
+    //             errs() << "getDirection---To: " << *cast<Instruction>(toNodeT) << "\n";
+    //             //no dependence 
+    //             return 0;
+    //         }
+    //     }
+
+    // }
+    //if they are no in PDG
+    // if (!twoCallInstInPDG) {
+        BasicBlock * curBB = lastCallInst->getParent();
+        if (curBB != curCallInst->getParent()) {
+            errs() << "ERROR, getDirection, lastCallInst and CurCallInst should be in the same basicblock...\n";
+            return 3;//don't move anything
+        } else {
+            //in the same basic block
+            bool hasStart = false;
+            uint32_t direction = 2;
+            bool lastToInstDep = false;
+            bool instToCurDep = false;
+            for (Instruction& I : *curBB ) {
+                if (dyn_cast<Instruction>(curCallInst) == &I) {
+                    errs() << "getDirection: break...\n";
+                    break;
+                }
+
+                if (dyn_cast<Instruction>(lastCallInst) == &I) {
+                    hasStart = true;
+                }
+
+                if (hasStart) {
+                    //determine cur inst dependence with lastInst and curInst
+                    for (auto subedge : pdg->getEdges()) {
+                        auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                        auto toNodeSubT = subedge->getIncomingNode()->getT();
+
+                        /*
+                        lastCallInst 1 - from 
+                        |
+                        (may be a dependence)
+                        |     
+                        inst         1 - to ; 2 - from
+                        |
+                        (may be a dependence)
+                        |
+                        curCallInst        2 - to
+                        */
+                        if (cast<Instruction>(lastCallInst) == cast<Instruction>(fromNodeSubT) &&
+                        cast<Instruction>(toNodeSubT) == &I) {
+                            if ((subedge->dataDepToString() == "RAW" ||
+                                subedge->dataDepToString() == "WAR" ||
+                                subedge->dataDepToString() == "WAW")
+                                && subedge->isMustDependence()) {
+                                    //means the lastCallInst can not move backward
+                                    lastToInstDep = true;
+                            }
+                        }
+
+                        if (cast<Instruction>(fromNodeSubT) == &I &&
+                        cast<Instruction>(curCallInst) == cast<Instruction>(toNodeSubT)) {
+                            if ((subedge->dataDepToString() == "RAW" ||
+                                subedge->dataDepToString() == "WAR" ||
+                                subedge->dataDepToString() == "WAW")
+                                && subedge->isMustDependence()) {
+                                    instToCurDep = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (lastToInstDep == false && instToCurDep == false) {
+                direction = 0;
+            } else if (lastToInstDep == false && instToCurDep == true) {
+                direction = 1;
+            } else if (lastToInstDep == true && instToCurDep == false) {
+                direction = 0;
+            } else { //lastToInstDep == true && instToCurDep == true
+                //we can't move any thing
+                direction = 3;
+            }
+            errs() << "return direction: " << direction << "\n";
+            return direction;
+        }
+    // }
+    // return 0;
+
+}

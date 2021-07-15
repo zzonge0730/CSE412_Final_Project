@@ -845,6 +845,7 @@ std::string DGEdgeBase<T, SubT>::toString() {
     ros << "^^^" << this->dataDepToString();
     ros << (must ? "(must)" : "(may)");
     ros << (memory ? "from memory" : " ");
+    ros << (isLoopCarried ? " >LC" : " >No-LC");
     ros << "\n";
     ros.flush();
     return edgeStr;

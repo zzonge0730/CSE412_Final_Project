@@ -87,6 +87,7 @@ private:
 
     std::map<llvm::Function*, InstructionVec> SCBranches;
 
+    std::map<llvm::Instruction*, llvm::Instruction*> instToSafeCheckMap;
     
 
     void findInstructions(llvm::Function *F);

@@ -4,6 +4,7 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -65,18 +66,16 @@ bool PDGAnalysis::runOnModule(Module &M) {
         errs() << "###Print the PDG ###\n";
         std::string str;
         raw_string_ostream ros(str);
-        errs() << "dumpPDG--67\n";
         currentPDG->print(ros);
-        errs() << "dumpPDG--69\n";
         ros.flush();
         errs() << "---dumpPDG--- \n" << str << "\n";
-        errs() << "---dumpPDG-70-- \n";
     }
 
     return false;
 }
 
 bool PDGAnalysis::doInitialization(Module &M) {
+    errs() << "Initialization...\n";
     this->dumpPDG = (PDGDump.getNumOccurrences() > 0) ? true : false;
     this->enableReachAnalysis = (PDGRA.getNumOccurrences() > 0) ? true : false;
     return false;
@@ -84,13 +83,19 @@ bool PDGAnalysis::doInitialization(Module &M) {
 
 void PDGAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
     //errs() << "getAnalysisUsage\n";
+    // AU.addRequired<CallGraph>();
+    // AU.addRequired<AliasAnalysis>();
+    // AU.addRequired<LoopInfo>();
+    
+    // AU.addRequired<DominatorTree>();
+    // AU.addRequired<PostDominatorTree>(); // 
     AU.addRequired<AliasAnalysis>();
     AU.addRequired<PostDominatorTree>(); // 
     AU.addRequired<DominatorTree>();
     AU.addRequired<LoopInfo>();
     AU.addRequired<CallGraph>();
     AU.setPreservesAll();
-    //errs() << "getAnalysisUsage---after\n";
+    errs() << "getAnalysisUsage---after\n";
 }
 
 void PDGAnalysis::releaseMemory() {
@@ -201,10 +206,10 @@ void PDGAnalysis::constructEdgesFromUseDefs(PDG *pdg) {
         //if it doesn't, then there is no varaible dependence
         
         //auto pdgValue = node->getT();
-        errs() << "---getT---180\n";
+        // errs() << "---getT---180\n";
         //auto pdgValue = (*node_iterator)->getT();
         llvm::Value * pdgValue = (*node_iterator)->getT();
-        errs() << "---after-getT---180\n";
+        // errs() << "---after-getT---180\n";
         //assert((pdgValue == nullptr) && "pdgValue is nullptr\n");
         if (pdgValue == nullptr || pdgValue == NULL) {
             errs() << "pdgValue is nullptr\n";
@@ -219,16 +224,16 @@ void PDGAnalysis::constructEdgesFromUseDefs(PDG *pdg) {
 
         //the current definition has uses
         //add the uses
-        errs() << "---PDGAnalysis 181---\n";
+        // errs() << "---PDGAnalysis 181---\n";
         //for (auto& U : pdgValue->uses()) {
         for (Value::use_iterator U = pdgValue->use_begin(); U != pdgValue->use_end(); ++U) {
-            errs() << "---PDGAnalysis 184---\n";
+            // errs() << "---PDGAnalysis 184---\n";
             //Instruction *User = dyn_cast<Instruction>(*U);
             if (isa<Instruction>(*U) || isa<Argument>(*U)) {
                 errs () << "Inst: " << *dyn_cast<Instruction>(*U) << "\n";
                 auto edge = pdg->addEdge(pdgValue, *U); //from: pdgValue, to:user, pdgValue - write(def),  user - read(use)
                 edge->setMemMustType(false, true, DG_DATA_RAW);
-                errs() << "---PDGAnalysis 188---\n";
+                // errs() << "---PDGAnalysis 188---\n";
             }
         }
     }
