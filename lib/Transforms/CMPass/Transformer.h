@@ -31,7 +31,7 @@ private:
     void generateJoin(Module &M);
 
     void createThread(CallInst * CI, std::set<Instruction*> joinPoints, Function * spawnableFun);
-    void createThreadForGroupedSF(std::set<CallInst *> CISet, Instruction* joinPoint, Function * spawnableFun, uint32_t direction);
+    void createThreadForGroupedSF(std::vector<CallInst *> CISet, Instruction* joinPoint, Function * spawnableFun, uint32_t direction);
 
     //void createJoin(std::set<Instruction*>& joinPoints, Value* id);
     void handleRetVal(CallInst * CI, AllocaInst * retVal);

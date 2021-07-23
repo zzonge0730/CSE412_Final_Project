@@ -1,0 +1,44 @@
+#ifndef LOOPS_H
+#define LOOPS_H
+
+#include "llvm/Pass.h"
+#include "LoopStructure.h"
+#include "PDG.h"
+#include "PDGAnalysis.h"
+#include "llvm/Analysis/CallGraph.h"
+
+#include <queue>
+
+using namespace llvm;
+
+class Loops : public ModulePass {
+public:
+    static char ID;
+    Loops();
+    virtual ~Loops();
+    void getAnalysisUsage(AnalysisUsage &AU) const override;
+    bool runOnModule(Module &M) override;
+
+    Function * getEntryFunction(void) const;
+
+    std::vector<LoopStructure *> * getLoopStructures(void);
+    std::vector<LoopStructure *> * getLoopStructures(Function * func);
+
+
+
+private:
+
+    Module * program;
+    PDG * pdg;
+    PDGAnalysis * pdgAnalysis;
+    std::unordered_map<BasicBlock*, uint32_t> loopHeaderToLoopIndexMap;
+
+    std::vector<Function*> * getModuleFunctionsReachableFrom(
+        Module * M, Function * startingPoint
+    );
+
+    PDG * getFunctionDependenceGraph(Function * func);
+
+};
+
+#endif

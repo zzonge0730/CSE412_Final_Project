@@ -1,7 +1,5 @@
 #include "LoopStructure.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Analysis/LoopInfoImpl.h"
-#include <utility>
+
 
 uint64_t LoopStructure::globalID = 0;
 
@@ -194,8 +192,25 @@ uint32_t LoopStructure::getNumberOfSubLoops(void) const {
 }
 
 void LoopStructure::print(raw_ostream & stream) {
-    stream << "Loop Summary: " << this->ID << ", depth: " << depth << "\n";
-    header->begin()->print(stream);
+    stream << "--->Loop Summary: " << this->ID << ", depth: " << depth << "\n";
+    stream << "--->Loop PreHeader: " << "\n";
+    preHeader->print(stream);
+    stream << "--->Loop Header: " << "\n";
+    // header->begin()->print(stream);
+    header->print(stream);
+    stream << "--->Loop Body: " << "\n";
+    for (auto bb : BBs) {
+        bb->print(stream);
+    }
+    stream << "--->Loop Latch: " << "\n";
+    for (auto latchBB : latchBBs) {
+        latchBB->print(stream);
+    }
+    stream << "--->Loop Exit: " << "\n";
+    for (auto exitBB : exitBlocks) {
+        exitBB->print(stream);
+    }
+
     stream << "\n";
 }
 

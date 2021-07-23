@@ -1,12 +1,14 @@
 #ifndef LOOPSTRUCTURE_H
 #define LOOPSTRUCTURE_H
 
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/LoopInfoImpl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instruction.h"
-#include "llvm/Support/raw_ostream.h"
 
-#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <unordered_set>
 #include <vector>

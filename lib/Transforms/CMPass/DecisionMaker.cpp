@@ -206,7 +206,8 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
         errs() << "DM:: func is "<< func->getName() << "...\n";
         for (BasicBlock &BB : *func) {
             CallInst * lastCallInst = nullptr;
-            std::set<CallInst *> safeCheckGroup;
+            // std::set<CallInst *> safeCheckGroup;
+            std::vector<CallInst *> safeCheckGroup;
             uint32_t direction = 2; // 2 - init, 0 - move forward, 1- move backward, 3 - stand
             uint32_t downUpCornerCase = 0; // flag = downUpCornerCase << 2 + direction; decode , direction = xx & 0x0000 0003, cornerCase = (flag >> 2 );
             for (Instruction &I : BB) {
@@ -217,7 +218,8 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
                         allJoinPoints.emplace_back(CI, joinpoints);
                         errs() << "Decision::CI is: " << *CI << "\n";
                         if (lastCallInst == nullptr) {
-                            safeCheckGroup.insert(CI);
+                            // safeCheckGroup.insert(CI);
+                            safeCheckGroup.push_back(CI);
                         } else {
                             errs() << "Decision::lastCallInst is: " << *lastCallInst << "\n";
                             uint32_t newDirection = getDirection(pdg, *func, lastCallInst, CI); // dependence analysis
@@ -229,13 +231,15 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
                                 if (newDirection == direction) { // 0-0, 1-1, 3-3
                                     if (newDirection != 3) {//0-0, 1-1
                                         if (true /*merge safecheck is profitable*/) {
-                                            safeCheckGroup.insert(CI);
+                                            // safeCheckGroup.insert(CI);
+                                            safeCheckGroup.push_back(CI); 
                                             continue;
                                         }
                                     } else { //3-3
                                         safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
                                         safeCheckGroup.clear();
-                                        safeCheckGroup.insert(CI);
+                                        // safeCheckGroup.insert(CI);
+                                        safeCheckGroup.push_back(CI);
                                     }
 
                                 } else { // newDirection != direction 0-1, 1-0, 0-3,3-0, 1-3,3-1
@@ -244,29 +248,34 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
                                         
                                         safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
                                         safeCheckGroup.clear();
-                                        safeCheckGroup.insert(CI);
+                                        // safeCheckGroup.insert(CI);
+                                        safeCheckGroup.push_back(CI);
                                         direction = newDirection;
                                         downUpCornerCase = 0;
                                     } else if (newDirection == 0) { // 0-3, 0-1
                                         if (direction == 3) {
-                                            safeCheckGroup.insert(CI);
+                                            // safeCheckGroup.insert(CI);
+                                            safeCheckGroup.push_back(CI);
                                             direction = newDirection;
                                             continue;
                                         } else if (direction == 1) { //special case
                                             downUpCornerCase = safeCheckGroup.size();
-                                            safeCheckGroup.insert(CI);
+                                            // safeCheckGroup.insert(CI);
+                                            safeCheckGroup.push_back(CI);
                                             direction = newDirection;
                                             continue;
                                         }
                                     } else if (newDirection == 1) { // 1-3, 1-0
                                         if (direction == 3) {
-                                            safeCheckGroup.insert(CI);
+                                            // safeCheckGroup.insert(CI);
+                                            safeCheckGroup.push_back(CI);
                                             direction = newDirection;
                                             continue;
                                         } else if (direction == 0) {
                                             safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
                                             safeCheckGroup.clear();
-                                            safeCheckGroup.insert(CI);
+                                            // safeCheckGroup.insert(CI);
+                                            safeCheckGroup.push_back(CI);
                                             direction = newDirection;
                                             downUpCornerCase = 0;
                                         }
@@ -278,11 +287,13 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
                                 if (newDirection == 3) {
                                     safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + newDirection));
                                     safeCheckGroup.clear();
-                                    safeCheckGroup.insert(CI);
+                                    // safeCheckGroup.insert(CI);
+                                    safeCheckGroup.push_back(CI);
                                     direction = 2;
                                 } else {
                                     direction = newDirection;
-                                    safeCheckGroup.insert(CI);
+                                    // safeCheckGroup.insert(CI);
+                                    safeCheckGroup.push_back(CI);
                                 }
                                 
                             }
@@ -519,7 +530,7 @@ std::set<Function*> DecisionMaker::getFuncToBeSpawned() {
     return this->funcToBeSpawned;
 }
 
-std::vector<std::pair<std::set<CallInst *>, uint32_t>> DecisionMaker::getSafeCheckToBeMergedGroup() {
+std::vector<std::pair<std::vector<CallInst *>, uint32_t>> DecisionMaker::getSafeCheckToBeMergedGroup() {
     return this->safeCheckToBeMergedGroup;
 }
 

@@ -106,12 +106,12 @@ bool Transformer::runOnModule(Module &M) {
 
 
     std::set<Function *> setOfGroupedSpawnableFuncs;
-    std::map<std::pair<std::set<CallInst *>, uint32_t>, Function *> groupFuncMapToGroupedSpawnableFuncs;
+    std::map<std::pair<std::vector<CallInst *>, uint32_t>, Function *> groupFuncMapToGroupedSpawnableFuncs;
     //get all safe check merged calls for spawanableFunc
     for (auto groupPair : dm.getSafeCheckToBeMergedGroup()) {
         errs() << "Grouped Spawnable Function Generatation...\n";
         // uint32_t direction = groupPair.second;
-        std::set<CallInst *> checksGroup = groupPair.first;
+        std::vector<CallInst *> checksGroup = groupPair.first;
 
         std::vector<bool> retValIsNotVoidTypeVec;
         // std::vector<Function::ArgumentListType&> argListVec;
@@ -270,7 +270,7 @@ bool Transformer::runOnModule(Module &M) {
 
     for (auto groupPair : dm.getSafeCheckToBeMergedGroup()) {
         uint32_t direction = groupPair.second;
-        std::set<CallInst *> checksGroup = groupPair.first;
+        std::vector<CallInst *> checksGroup = groupPair.first;
         for (auto call : checksGroup) {
             errs() << "111call: " << *call << "\n";
         }
@@ -292,7 +292,8 @@ bool Transformer::runOnModule(Module &M) {
         std::set<Instruction *> joinPoints;
         std::map<CallInst *, std::set<Instruction *>>::iterator JoinPairItForGroupedIt;
         for (JoinPairItForGroupedIt = dm.join_begin(); JoinPairItForGroupedIt != dm.join_end(); ++JoinPairItForGroupedIt) {
-            if (checksGroup.count(JoinPairItForGroupedIt->first)) {
+            // if (checksGroup.count(JoinPairItForGroupedIt->first)) {
+            if (std::count(checksGroup.begin(), checksGroup.end(), JoinPairItForGroupedIt->first)) {
                 joinPoints.insert(JoinPairItForGroupedIt->second.begin(), JoinPairItForGroupedIt->second.end());
             }
         }
@@ -458,7 +459,7 @@ void Transformer::createThread(CallInst * CI, std::set<Instruction*> joinPoints,
 
 }
 
-void Transformer::createThreadForGroupedSF(std::set<CallInst *> CISet, Instruction* joinPoint, Function * spawnableFun, uint32_t direction) {
+void Transformer::createThreadForGroupedSF(std::vector<CallInst *> CISet, Instruction* joinPoint, Function * spawnableFun, uint32_t direction) {
 
     std::vector<CallInst *> CIVec;
     std::vector<AllocaInst *> retValVec;
@@ -497,7 +498,8 @@ void Transformer::createThreadForGroupedSF(std::set<CallInst *> CISet, Instructi
         // }
         callInstToPlace = CIVec[CIVec.size() - 1];
     } else {//there is a cornercase
-        callInstToPlace = CIVec[cornerCaseIndex - 1];
+        // callInstToPlace = CIVec[cornerCaseIndex - 1];
+        callInstToPlace = CIVec[CIVec.size() - 1];
     }
     errs() << "----480\n";
     errs() << "ToPlaceCall: " << *callInstToPlace << "\n";

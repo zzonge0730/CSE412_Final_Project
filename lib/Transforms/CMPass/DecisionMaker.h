@@ -61,7 +61,7 @@ public:
         return profitableJoinPoints.end();
     }
 
-    std::vector<std::pair<std::set<CallInst *>, uint32_t>> getSafeCheckToBeMergedGroup();
+    std::vector<std::pair<std::vector<CallInst *>, uint32_t>> getSafeCheckToBeMergedGroup();
 
 private:
     //
@@ -75,7 +75,7 @@ private:
     //safeCheckGroup - 1, menas that former check move backward
     //safeCheckGroup - 2, init state
     //safeCheckGroup - 3, we can't move any thing
-    std::vector<std::pair<std::set<CallInst *>, uint32_t>> safeCheckToBeMergedGroup;
+    std::vector<std::pair<std::vector<CallInst *>, uint32_t>> safeCheckToBeMergedGroup;
 
     std::set<Instruction*> findAllJoinPoints(PDG * pdg, CallInst *CI, Function &F);
     //bool hasJoinPointInBlock(std::set<Instruction *> points, BasicBlock *);
