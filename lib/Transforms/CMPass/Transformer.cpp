@@ -105,87 +105,87 @@ bool Transformer::runOnModule(Module &M) {
     }
 
 
-    std::set<Function *> setOfGroupedSpawnableFuncs;
-    std::map<std::pair<std::vector<CallInst *>, uint32_t>, Function *> groupFuncMapToGroupedSpawnableFuncs;
-    //get all safe check merged calls for spawanableFunc
-    for (auto groupPair : dm.getSafeCheckToBeMergedGroup()) {
-        errs() << "Grouped Spawnable Function Generatation...\n";
-        // uint32_t direction = groupPair.second;
-        std::vector<CallInst *> checksGroup = groupPair.first;
+    // std::set<Function *> setOfGroupedSpawnableFuncs;
+    // std::map<std::pair<std::vector<CallInst *>, uint32_t>, Function *> groupFuncMapToGroupedSpawnableFuncs;
+    // //get all safe check merged calls for spawanableFunc
+    // for (auto groupPair : dm.getSafeCheckToBeMergedGroup()) {
+    //     errs() << "Grouped Spawnable Function Generatation...\n";
+    //     // uint32_t direction = groupPair.second;
+    //     std::vector<CallInst *> checksGroup = groupPair.first;
 
-        std::vector<bool> retValIsNotVoidTypeVec;
-        // std::vector<Function::ArgumentListType&> argListVec;
-        std::string groupedFuncName = "_Spawnable_";
-        std::vector<Type *> groupedFuncArgs;
-        std::vector<Function *> checkFuncVec;
-        uint32_t totalNumArgs = 0;
-        for (auto check : checksGroup) {
-            errs() << "222call: " << *check << "\n";
-            Function * fun = check->getCalledFunction();
-            groupedFuncName += fun->getName().split('_').second.split('_').second.split('_').second.split('_').first.str() + "_";
+    //     std::vector<bool> retValIsNotVoidTypeVec;
+    //     // std::vector<Function::ArgumentListType&> argListVec;
+    //     std::string groupedFuncName = "_Spawnable_";
+    //     std::vector<Type *> groupedFuncArgs;
+    //     std::vector<Function *> checkFuncVec;
+    //     uint32_t totalNumArgs = 0;
+    //     for (auto check : checksGroup) {
+    //         errs() << "222call: " << *check << "\n";
+    //         Function * fun = check->getCalledFunction();
+    //         groupedFuncName += fun->getName().split('_').second.split('_').second.split('_').second.split('_').first.str() + "_";
 
-            bool retValIsNotVoidTypeItem = (fun->getReturnType() != Type::getVoidTy(c));
-            retValIsNotVoidTypeVec.push_back(retValIsNotVoidTypeItem);
+    //         bool retValIsNotVoidTypeItem = (fun->getReturnType() != Type::getVoidTy(c));
+    //         retValIsNotVoidTypeVec.push_back(retValIsNotVoidTypeItem);
 
-            auto& funcArgListTmp = fun->getArgumentList();
-            // argListVec.push_back(funcArgList);
+    //         auto& funcArgListTmp = fun->getArgumentList();
+    //         // argListVec.push_back(funcArgList);
 
-            totalNumArgs += (retValIsNotVoidTypeItem ? funcArgListTmp.size() + 1 : funcArgListTmp.size());
+    //         totalNumArgs += (retValIsNotVoidTypeItem ? funcArgListTmp.size() + 1 : funcArgListTmp.size());
 
-            checkFuncVec.push_back(fun);
-        }
+    //         checkFuncVec.push_back(fun);
+    //     }
 
-        groupedFuncArgs.reserve(totalNumArgs);
-        Type * const voidStarTy = PointerType::getUnqual(Type::getInt8Ty(c));
-        for (int i = 0; i < totalNumArgs; i++) {
-            groupedFuncArgs.push_back(voidStarTy);
-        }
-        FunctionType * groupedFuncType = FunctionType::get(Type::getVoidTy(c), groupedFuncArgs, false);
+    //     groupedFuncArgs.reserve(totalNumArgs);
+    //     Type * const voidStarTy = PointerType::getUnqual(Type::getInt8Ty(c));
+    //     for (int i = 0; i < totalNumArgs; i++) {
+    //         groupedFuncArgs.push_back(voidStarTy);
+    //     }
+    //     FunctionType * groupedFuncType = FunctionType::get(Type::getVoidTy(c), groupedFuncArgs, false);
 
-        Function * groupedSpawnableFunc = cast<Function>(Function::Create(groupedFuncType, Function::InternalLinkage, groupedFuncName, &M));
-        BasicBlock * BB = BasicBlock::Create(c, "entry", groupedSpawnableFunc);
+    //     Function * groupedSpawnableFunc = cast<Function>(Function::Create(groupedFuncType, Function::InternalLinkage, groupedFuncName, &M));
+    //     BasicBlock * BB = BasicBlock::Create(c, "entry", groupedSpawnableFunc);
 
-        auto& groupedSpawnableFuncArgList = groupedSpawnableFunc->getArgumentList();        
-        auto groupedSpawnableFuncArgListIt = groupedSpawnableFuncArgList.begin();
+    //     auto& groupedSpawnableFuncArgList = groupedSpawnableFunc->getArgumentList();        
+    //     auto groupedSpawnableFuncArgListIt = groupedSpawnableFuncArgList.begin();
 
         
-        for (int ind = 0; ind < checkFuncVec.size(); ++ind) {
-            auto& funcArgList = checkFuncVec[ind]->getArgumentList();
-            std::vector<Value *> groupedCastArgs;
-            for (auto argListIt = funcArgList.begin(); argListIt != funcArgList.end(); ++argListIt, ++groupedSpawnableFuncArgListIt ) {
-                Type * tmpType = argListIt->getType();
+    //     for (int ind = 0; ind < checkFuncVec.size(); ++ind) {
+    //         auto& funcArgList = checkFuncVec[ind]->getArgumentList();
+    //         std::vector<Value *> groupedCastArgs;
+    //         for (auto argListIt = funcArgList.begin(); argListIt != funcArgList.end(); ++argListIt, ++groupedSpawnableFuncArgListIt ) {
+    //             Type * tmpType = argListIt->getType();
 
-                if (tmpType->isPointerTy()) {
-                    BitCastInst * bitcast = new BitCastInst(&*groupedSpawnableFuncArgListIt, tmpType, "", BB);
-                    groupedCastArgs.push_back(bitcast);
-                } else {
-                    BitCastInst * bitcast = new BitCastInst(&*groupedSpawnableFuncArgListIt, PointerType::getUnqual(tmpType), "", BB);
-                    LoadInst * load = new LoadInst(bitcast, "", BB);
-                    groupedCastArgs.push_back(load);
-                }
-            }
+    //             if (tmpType->isPointerTy()) {
+    //                 BitCastInst * bitcast = new BitCastInst(&*groupedSpawnableFuncArgListIt, tmpType, "", BB);
+    //                 groupedCastArgs.push_back(bitcast);
+    //             } else {
+    //                 BitCastInst * bitcast = new BitCastInst(&*groupedSpawnableFuncArgListIt, PointerType::getUnqual(tmpType), "", BB);
+    //                 LoadInst * load = new LoadInst(bitcast, "", BB);
+    //                 groupedCastArgs.push_back(load);
+    //             }
+    //         }
 
-            //add call original function
-            CallInst * callInst = CallInst::Create(checkFuncVec[ind], groupedCastArgs, "", BB);
-            if (retValIsNotVoidTypeVec[ind]) {
-                //TODO: not sure "&spawnableFuncArgList.back()" corresponding to ""
-                BitCastInst * bitcast = new BitCastInst(&*groupedSpawnableFuncArgListIt, PointerType::getUnqual(checkFuncVec[ind]->getReturnType()) , "" , BB);
-                StoreInst * store = new StoreInst(callInst, bitcast, BB);
-                groupedSpawnableFuncArgListIt++;
-            }
+    //         //add call original function
+    //         CallInst * callInst = CallInst::Create(checkFuncVec[ind], groupedCastArgs, "", BB);
+    //         if (retValIsNotVoidTypeVec[ind]) {
+    //             //TODO: not sure "&spawnableFuncArgList.back()" corresponding to ""
+    //             BitCastInst * bitcast = new BitCastInst(&*groupedSpawnableFuncArgListIt, PointerType::getUnqual(checkFuncVec[ind]->getReturnType()) , "" , BB);
+    //             StoreInst * store = new StoreInst(callInst, bitcast, BB);
+    //             groupedSpawnableFuncArgListIt++;
+    //         }
 
-        }
+    //     }
 
 
-        ReturnInst::Create(c, nullptr, BB);
+    //     ReturnInst::Create(c, nullptr, BB);
 
-        //map
-        errs() << "groupedSpawnableFunc: --- \n" << *groupedSpawnableFunc << "\n";
+    //     //map
+    //     errs() << "groupedSpawnableFunc: --- \n" << *groupedSpawnableFunc << "\n";
 
-        groupFuncMapToGroupedSpawnableFuncs[groupPair] = groupedSpawnableFunc;
-        setOfGroupedSpawnableFuncs.insert(groupedSpawnableFunc);
+    //     groupFuncMapToGroupedSpawnableFuncs[groupPair] = groupedSpawnableFunc;
+    //     setOfGroupedSpawnableFuncs.insert(groupedSpawnableFunc);
         
-    }
+    // }
 
 
 
@@ -194,10 +194,10 @@ bool Transformer::runOnModule(Module &M) {
         return false;
     }
 
-    if (setOfGroupedSpawnableFuncs.size() == 0) {
-        errs() << "grouped nothing to spawn...\n";
-        return false;
-    }
+    // if (setOfGroupedSpawnableFuncs.size() == 0) {
+    //     errs() << "grouped nothing to spawn...\n";
+    //     return false;
+    // }
 
     //generate multi-thread code
     std::set<uint32_t> arities;
@@ -205,19 +205,19 @@ bool Transformer::runOnModule(Module &M) {
         arities.insert(spawnableF->getArgumentList().size());
     }
 
-    std::set<uint32_t> groupedArities;
-    for (Function * groupedSpawnableF : setOfGroupedSpawnableFuncs) {
-        groupedArities.insert(groupedSpawnableF->getArgumentList().size());
-    }
+    // std::set<uint32_t> groupedArities;
+    // for (Function * groupedSpawnableF : setOfGroupedSpawnableFuncs) {
+    //     groupedArities.insert(groupedSpawnableF->getArgumentList().size());
+    // }
 
     uint32_t maxArgsNum = *--arities.end();//get the max num
 
-    uint32_t groupedMaxArgsNum = *--groupedArities.end();
+    // uint32_t groupedMaxArgsNum = *--groupedArities.end();
 
     //because of thread pool, multiple overloaded functions
     generateConstructorForSpawnableFunc(arities, M, maxArgsNum); // 
 
-    genCtorsForGroupedSpawnableFunc(groupedArities, M, groupedMaxArgsNum);
+    // genCtorsForGroupedSpawnableFunc(groupedArities, M, groupedMaxArgsNum);
 
     //because of thread pool, for join function 
     generateJoin(M); //
@@ -245,9 +245,9 @@ bool Transformer::runOnModule(Module &M) {
             continue;
         }
         //create thread
-        // createThread(JoinPairIt->first, JoinPairIt->second, spawnableF);
+        createThread(JoinPairIt->first, JoinPairIt->second, spawnableF);
         errs() << "after createThread...\n";
-        // JoinPairIt->first->eraseFromParent(); // 
+        JoinPairIt->first->eraseFromParent(); // 
         errs() << "after eraseFromParent...\n";
         errs() << "count: " << count << "\n";
     }
@@ -268,46 +268,46 @@ bool Transformer::runOnModule(Module &M) {
     //Parallelizer& par = getAnalysis<Parallelizer>(); //it means that Parallelizer class had runOnModule
     
 
-    for (auto groupPair : dm.getSafeCheckToBeMergedGroup()) {
-        uint32_t direction = groupPair.second;
-        std::vector<CallInst *> checksGroup = groupPair.first;
-        for (auto call : checksGroup) {
-            errs() << "111call: " << *call << "\n";
-        }
-        Function * groupedSF;
+    // for (auto groupPair : dm.getSafeCheckToBeMergedGroup()) {
+    //     uint32_t direction = groupPair.second;
+    //     std::vector<CallInst *> checksGroup = groupPair.first;
+    //     for (auto call : checksGroup) {
+    //         errs() << "111call: " << *call << "\n";
+    //     }
+    //     Function * groupedSF;
 
-        if (groupFuncMapToGroupedSpawnableFuncs.find(groupPair) != groupFuncMapToGroupedSpawnableFuncs.end()) {
-            groupedSF = groupFuncMapToGroupedSpawnableFuncs[groupPair];
-        } else {
-            groupedSF = nullptr;
-        }
+    //     if (groupFuncMapToGroupedSpawnableFuncs.find(groupPair) != groupFuncMapToGroupedSpawnableFuncs.end()) {
+    //         groupedSF = groupFuncMapToGroupedSpawnableFuncs[groupPair];
+    //     } else {
+    //         groupedSF = nullptr;
+    //     }
 
-        if (groupedSF == nullptr) {
-            errs() << "groupedSpawnable function was not found...\n";
-            continue;
-        }
+    //     if (groupedSF == nullptr) {
+    //         errs() << "groupedSpawnable function was not found...\n";
+    //         continue;
+    //     }
 
-        //get merge joinPoints
-        //there only one join Point after merging, bacause of join dependence
-        std::set<Instruction *> joinPoints;
-        std::map<CallInst *, std::set<Instruction *>>::iterator JoinPairItForGroupedIt;
-        for (JoinPairItForGroupedIt = dm.join_begin(); JoinPairItForGroupedIt != dm.join_end(); ++JoinPairItForGroupedIt) {
-            // if (checksGroup.count(JoinPairItForGroupedIt->first)) {
-            if (std::count(checksGroup.begin(), checksGroup.end(), JoinPairItForGroupedIt->first)) {
-                joinPoints.insert(JoinPairItForGroupedIt->second.begin(), JoinPairItForGroupedIt->second.end());
-            }
-        }
-        Instruction * firstJoinPoint = *joinPoints.begin();
+    //     //get merge joinPoints
+    //     //there only one join Point after merging, bacause of join dependence
+    //     std::set<Instruction *> joinPoints;
+    //     std::map<CallInst *, std::set<Instruction *>>::iterator JoinPairItForGroupedIt;
+    //     for (JoinPairItForGroupedIt = dm.join_begin(); JoinPairItForGroupedIt != dm.join_end(); ++JoinPairItForGroupedIt) {
+    //         // if (checksGroup.count(JoinPairItForGroupedIt->first)) {
+    //         if (std::count(checksGroup.begin(), checksGroup.end(), JoinPairItForGroupedIt->first)) {
+    //             joinPoints.insert(JoinPairItForGroupedIt->second.begin(), JoinPairItForGroupedIt->second.end());
+    //         }
+    //     }
+    //     Instruction * firstJoinPoint = *joinPoints.begin();
         
-        //because one callInst has more than one joinPoints
-        createThreadForGroupedSF(checksGroup, firstJoinPoint, groupedSF, direction);
+    //     //because one callInst has more than one joinPoints
+    //     createThreadForGroupedSF(checksGroup, firstJoinPoint, groupedSF, direction);
 
 
-        //erase originial call function
-        for (auto check : checksGroup) {
-            check->eraseFromParent();
-        }
-    }
+    //     //erase originial call function
+    //     for (auto check : checksGroup) {
+    //         check->eraseFromParent();
+    //     }
+    // }
 
 
 
@@ -321,7 +321,7 @@ void Transformer::generateConstructorForSpawnableFunc(std::set<uint32_t> &aritie
     LLVMContext &c = M.getContext();
     
     std::vector<Type *> ctorSig(baseArgs);
-    ctorSig[0] = Type::getInt32Ty(c); // confused
+    ctorSig[0] = Type::getInt32Ty(c); // task id
 
     Type* voidStarType = PointerType::getUnqual(Type::getInt8Ty(c));
 
@@ -441,7 +441,7 @@ void Transformer::createThread(CallInst * CI, std::set<Instruction*> joinPoints,
     CallInst::Create(ctorIt->second, args, "", CI);
     errs() << "createThread--224\n";
     //the join function needs the first ctor arg
-    Value * id = args[0]; // why args[0] , confused
+    Value * id = args[0]; // task ID
     //createJoin(joinPoints, id);
     for (auto *point : joinPoints) {
         CallInst::Create(join, id, "", point); 

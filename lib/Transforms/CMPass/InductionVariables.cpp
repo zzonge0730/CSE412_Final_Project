@@ -426,15 +426,25 @@ InductionVariableManager::InductionVariableManager (
   /*
    * Fetch the function that includes the loop.
    */
+    // errs() << "----loopToAnalyze----\n";
+    // std::string str;
+    // raw_string_ostream ros(str);
+    // loopToAnalyze->print(ros);
+    // ros.flush();
+    // errs() << str << "\n";
+
+
   auto &F = *loopToAnalyze->getHeader()->getParent();
 
+  // errs() << "F is: " << F << "\n";
   /*
    * Identify the induction variables.
    */
   ScalarEvolutionReferentialExpander referentialExpander(SE, F);
+  errs() << "---435\n";
   for (auto &loop : LIS.loops) {
     this->loopToIVsMap[loop.get()] = std::unordered_set<InductionVariable *>();
-
+    errs() << "---438i\n";
     /*
      * Fetch the loop header.
      */
@@ -443,8 +453,10 @@ InductionVariableManager::InductionVariableManager (
     /*
      * Iterate over all phis within the loop header.
      */
+    errs() << "---447i\n";
+    errs() << "count phi: " << std::distance(header->phis().begin(), header->phis().end()) << "\n";
     for (auto &phi : header->phis()) {
-
+      errs() << "---448i\n";
       /*
        * Check if the PHI node can be analyzed by the SCEV analysis.
        */
@@ -484,10 +496,12 @@ InductionVariableManager::InductionVariableManager (
       /*
        * Save the IV.
        */
+      errs() << "---487i\n";
       this->loopToIVsMap[loop.get()].insert(IV);
       auto exitBlocks = LIS.getLoop(phi)->getLoopExitBasicBlocks();
       auto attribution = new LoopGoverningIVAttribution(*IV, *sccContainingIV, exitBlocks);
       if (attribution->isSCCContainingIVWellFormed()) {
+        errs() << "---491i\n";
         loopToGoverningIVAttrMap[loop.get()] = attribution;
       } else {
         delete attribution;
@@ -620,6 +634,7 @@ InductionVariable * InductionVariableManager::getLoopGoverningInductionVariable 
    * Check if the loop has the governing IV.
    */
   if (loopToGoverningIVAttrMap.find(&LS) == loopToGoverningIVAttrMap.end()) {
+    errs() << "---623\n";
     return nullptr;
   }
 

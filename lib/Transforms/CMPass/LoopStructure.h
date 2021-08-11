@@ -77,6 +77,8 @@ public:
 
     std::vector<BasicBlock *> orderedBBs;
 
+    std::unordered_set<BasicBlock *> getLoopBody(void);
+
 private:
     uint64_t ID;
     BasicBlock * header;
@@ -95,6 +97,9 @@ private:
     static uint64_t globalID;
 
     bool isContainedInstructionLoopInvariant(Instruction *inst) const;
+
+    void calculateLoopBody(void);
+    std::unordered_set<BasicBlock *> bodyBBs;
 };
 
 #endif

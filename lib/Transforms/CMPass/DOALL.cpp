@@ -5,26 +5,10 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InstrTypes.h"
 
-char DOALL::ID = 0;
-static RegisterPass<DOALL> X("DOALL", "Handle DOALL Parallelism");
 
-DOALL::DOALL() : ModulePass{ID} {
 
-}
-
-void DOALL::getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.addRequired<DominatorTree>();
-    AU.addRequired<PostDominatorTree>();
-
-    AU.setPreservesAll();
-}
-bool DOALL::runOnModule(Module& M) {
-    errs() << "DOALL runOnModule..\n";
-    return false;
-}
-
-bool DOALL::doInitialization (Module& M) {
-    this->M = &M;
+DOALL::DOALL(Module & module){
+    this->M = &module;
     this->taskDispatcher = this->M->getFunction("softboundcets_pseudo_main");//---zyy should be set to dispatcher function, opt later
     if (this->taskDispatcher == nullptr) {
         errs() << "ERROR: function xxx couldn't be found...\n";
@@ -39,15 +23,18 @@ bool DOALL::doInitialization (Module& M) {
         int64, int64, int64};
     auto funcArgTyeps = ArrayRef<Type*>(types);
     this->taskSignature = FunctionType::get(Type::getVoidTy(ctx), funcArgTyeps, false);
+    this->envBuilder = nullptr;
+    this->entryPointOfParallelizedLoop = nullptr;
+    this->exitPointOfParallelizedLoop = nullptr;
 }
+
 
 DOALL::~DOALL() {
-
+    reset();
 }
 
-
-
-bool DOALL::apply(LoopDependenceInfo * LDI, Master& master) {
+// bool DOALL::apply(LoopDependenceInfo * LDI, Master& master) {
+bool DOALL::apply(LoopDependenceInfo * LDI) {
     //fetch the loop headers
     auto loopStructure = LDI->getLoopStructure();
     auto loopHeader = loopStructure->getHeader();
@@ -65,7 +52,7 @@ bool DOALL::apply(LoopDependenceInfo * LDI, Master& master) {
     errs() << "DOALL: Chunk Size = " << LDI->DOALLChunkSize << "\n";
 
     //generate an empty task for the parallel DOALL execution
-    DOALLTask * chunkerTask = new DOALLTask(0, this->taskSignature, *this->M);
+    DOALLTask * chunkerTask = new DOALLTask(0, this->taskSignature, this->M);
     this->addPredecessorAndSuccessorsBasicBlockToTasks(LDI, {chunkerTask});
     this->numOfTaskInstantces = LDI->getMaxCoreNumber();
 
@@ -78,41 +65,47 @@ bool DOALL::apply(LoopDependenceInfo * LDI, Master& master) {
     //clone loop into the single task used by DOALL
     this->cloneSeqLoop(LDI, 0);
 
-    //load all loop live-in values at the entry point of the task
-    auto envUser = this->envBuilder->getUser(0);
-    for (auto envIndex : loopEnv->getEnvIndicesOfLiveInVars()) {
-        envUser->addLiveInIndex(envIndex);
-    }
-    for (auto envIndex : loopEnv->getEnvIndicesOfLiveOutVars()) {
-        envUser->addLiveOutIndex(envIndex);
-    }
-    this->generateCodeToLoadLiveInVars(LDI, 0);
+    // //load all loop live-in values at the entry point of the task
+    // auto envUser = this->envBuilder->getUser(0);
+    // for (auto envIndex : loopEnv->getEnvIndicesOfLiveInVars()) {
+    //     envUser->addLiveInIndex(envIndex);
+    // }
+    // for (auto envIndex : loopEnv->getEnvIndicesOfLiveOutVars()) {
+    //     envUser->addLiveOutIndex(envIndex);
+    // }
+    // this->generateCodeToLoadLiveInVars(LDI, 0);
     
-    //flow loading live-ins as this re-wiring overrides
-    //the live-in mapping to use locally cloned memory instructions that are live-in to the loop
-    this->cloneMemoryLocationsLocallyAndRewireLoop(LDI, 0);
+    // //flow loading live-ins as this re-wiring overrides
+    // //the live-in mapping to use locally cloned memory instructions that are live-in to the loop
+    // this->cloneMemoryLocationsLocallyAndRewireLoop(LDI, 0);
 
-    //adjust dataflow to use clones
-    this->adjustDataFlowToUseClones(LDI, 0);
-    this->setReducableVarsToBeginAtIdentifyValue(LDI, 0);
-    this->rewireLoopToIterateChunks(LDI);
+    // //adjust dataflow to use clones
+    // this->adjustDataFlowToUseClones(LDI, 0);
+    // this->setReducableVarsToBeginAtIdentifyValue(LDI, 0);
+    // errs() << "---dl85\n";
+    // this->rewireLoopToIterateChunks(LDI);
+    // errs() << "---dl86\n";
+    // // //add the final return to the single task's exit block
+    // IRBuilder<> exitB(tasks[0]->getExit());
+    // exitB.CreateRetVoid();
 
-    //add the final return to the single task's exit block
-    IRBuilder<> exitB(tasks[0]->getExit());
-    exitB.CreateRetVoid();
-
-    //store final resutls to loop live-out variables
-    this->generateCodeToStoreLiveOutVars(LDI, 0);
-    this->addChunkFunctionExecutionAsideOriginalLoop(LDI, loopFunction, master);
-    //print the final DOALL loop
-    tasks[0]->getTaskBody()->print(errs() << "DOALL: Final parallelized loop:\n");
-    errs() << "\n";
+    // errs() << "--Module---\n";
+    // // errs() << *M << "\n";
+    // // //store final resutls to loop live-out variables
+    // this->generateCodeToStoreLiveOutVars(LDI, 0);
+    // // // this->addChunkFunctionExecutionAsideOriginalLoop(LDI, loopFunction, master);
+    // this->addChunkFunctionExecutionAsideOriginalLoop(LDI, loopFunction);
+    // //print the final DOALL loop
+    errs() << "---task Body: \n";
+    // errs() << *tasks[0]->getTaskBody();
+    // tasks[0]->getTaskBody()->print(errs() << "DOALL: Final parallelized loop:\n");
+    // errs() << "\n";
 
     errs() << "DOALL: Exit\n";
     return true;
 }
 
-bool DOALL::canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& cat) {
+bool DOALL::canBeAppliedToLoop(LoopDependenceInfo * LDI) {
     errs() << "DOALL: Checking if the loop parallelism is DOALL.\n";
 
     //fetch the loop structure
@@ -153,34 +146,34 @@ bool DOALL::canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& cat) {
     }
 
     //the compiler must be able to remove loop-carried data dependences of all SCCs with loop-carried data dependences
-    auto nonDOALLSCCs = DOALL::getSCCsThatBlockDOALLToBeApplicable(LDI, cat);
-    if (nonDOALLSCCs.size() > 0) {
-        for (auto scc : nonDOALLSCCs) {
-            errs() << "DOALL: We found an SCC of the loop that is non clonable and non commutative\n";
-            sccManager->iterateOverLoopCarriedDataDependences(scc, [](DGEdge<Value>*dep) -> bool {
-                auto fromInst = dep->getOutgoingT();
-                auto toInst = dep->getIncomingT();
-                errs() << "DOALL: " << *fromInst << "---->" << *toInst;
-                if (dep->isMemoryDependence()) {
-                    errs() << " via memory\n";
-                } else {
-                    errs() << " via variable\n";
-                }
-                return false;
-            });
-        }
+    // auto nonDOALLSCCs = DOALL::getSCCsThatBlockDOALLToBeApplicable(LDI, cat);
+    // if (nonDOALLSCCs.size() > 0) {
+    //     for (auto scc : nonDOALLSCCs) {
+    //         errs() << "DOALL: We found an SCC of the loop that is non clonable and non commutative\n";
+    //         sccManager->iterateOverLoopCarriedDataDependences(scc, [](DGEdge<Value>*dep) -> bool {
+    //             auto fromInst = dep->getOutgoingT();
+    //             auto toInst = dep->getIncomingT();
+    //             errs() << "DOALL: " << *fromInst << "---->" << *toInst;
+    //             if (dep->isMemoryDependence()) {
+    //                 errs() << " via memory\n";
+    //             } else {
+    //                 errs() << " via variable\n";
+    //             }
+    //             return false;
+    //         });
+    //     }
 
-        //there is at least one SCC that blocks DOALL to be applicable
-        return false;
-    }
+    //     //there is at least one SCC that blocks DOALL to be applicable
+    //     return false;
+    // }
 
     //the loop must have at least one induction variable
     //this is because the trip count must be controlled by an induction variable
-    auto loopGoverningIVAttr = LDI->getLoopGoverningIVAttribution();
-    if (!loopGoverningIVAttr) {
-        errs() << "DOALL: Loop does not have an induction variable to control the number of iterations\n";
-        return false;
-    }
+    // auto loopGoverningIVAttr = LDI->getLoopGoverningIVAttribution();
+    // if (!loopGoverningIVAttr) {
+    //     errs() << "DOALL: Loop does not have an induction variable to control the number of iterations\n";
+    //     return false;
+    // }
 
     //due to a limitation in our ability to chunk induction variables
     //all induction variables must have step size that are loop invariant
@@ -194,23 +187,24 @@ bool DOALL::canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& cat) {
     }
 
     //check if the final value of the induction variable is a loop invariant
-    auto invariantManager = LDI->getInvariantManager();
-    LoopGoverningIVUtility ivUtility(loopGoverningIVAttr->getInductionVariable(), *loopGoverningIVAttr);
-    auto& derivation = ivUtility.getConditionValueDerivation();
-    for (auto I : derivation) {
-        if (!invariantManager->isLoopInvariant(I)) {
-            errs() << "DOALL: Loop has the governing induction variable that is compared against a non-invariant";
-            errs() << "DOALL:  The non-invariant is = " << *I << "\n";
-            return false;
-        }
-    }
+    // auto invariantManager = LDI->getInvariantManager();
+    // LoopGoverningIVUtility ivUtility(*loopGoverningIVAttr);
+    // auto& derivation = ivUtility.getConditionValueDerivation();
+    // for (auto I : derivation) {
+    //     if (!invariantManager->isLoopInvariant(I)) {
+    //         errs() << "DOALL: Loop has the governing induction variable that is compared against a non-invariant";
+    //         errs() << "DOALL:  The non-invariant is = " << *I << "\n";
+    //         return false;
+    //     }
+    // }
 
     //!!There is a DOALL one
     errs() << "---DOALL: The loop can be parallelized with DOALL---\n";
     return true;
 }
 
-std::unordered_set<SCC *> DOALL::getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI, Master& cat) {
+// std::unordered_set<SCC *> DOALL::getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI, Master& cat) {
+std::unordered_set<SCC *> DOALL::getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI) {
     std::unordered_set<SCC * > sccs;
 
     //fetch the SCC manager of the loop given as input
@@ -266,7 +260,7 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
    
     //fetch the task
     auto task = this->tasks[0];
-
+    
     auto invariantManager = LDI->getInvariantManager();
     auto loopSummary = LDI->getLoopStructure();
     auto loopHeader = loopSummary->getHeader();
@@ -274,15 +268,18 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
     auto preheaderClone = task->getCloneOfOriginalBasicBlock(loopPreHeader);
     auto headerClone = task->getCloneOfOriginalBasicBlock(loopHeader);
     auto allIVInfo = LDI->getInductionVariableManager();
-
+    
   
     // Hook up preheader to header to enable induction variable manipulation
    
     IRBuilder<> entryBuilder(task->getEntry());
+    errs() << "---267\n";
+    if (headerClone == nullptr) errs() << "---273\n";
     auto temporaryBrToLoop = entryBuilder.CreateBr(headerClone);
+    errs() << "---259\n";
     entryBuilder.SetInsertPoint(temporaryBrToLoop);
 
-  
+    errs() << "---274\n";
     // Generate PHI to track progress on the current chunk
     auto chunkCounterType = task->chunkSizeArg->getType();
     auto chunkPHI = IVUtility::createChunkPHI(preheaderClone, headerClone, chunkCounterType, task->chunkSizeArg);
@@ -292,7 +289,7 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
     // of the top level loop
 
     auto clonedStepSizeMap = this->cloneIVStepValueComputation(LDI, 0, entryBuilder);
-
+    errs() << "---284\n";
     // Determine start value of the IV for the task
     // core_start: original_start + original_step_size * core_id * chunk_size
     for (auto ivInfo : allIVInfo->getInductionVariables(*loopSummary)) {
@@ -313,7 +310,7 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
         ivPHI->setIncomingValueForBlock(preheaderClone, offsetStartValue);
     }
 
-    
+    errs() << "---305\n";
     // Determine additional step size from the beginning of the next core's chunk
     // to the start of this core's next chunk
     // chunk_step_size: original_step_size * (num_cores - 1) * chunk_size
@@ -338,12 +335,21 @@ void DOALL::rewireLoopToIterateChunks(LoopDependenceInfo * LDI) {
         IVUtility::chunkInductionVariablePHI(preheaderClone, ivPHI, chunkPHI, chunkStepSize);
     }
 
-    
+    errs() << "---330\n";
     // The exit condition needs to be made non-strict to catch iterating past it
     auto loopGoverningIVAttr = LDI->getLoopGoverningIVAttribution();
-    LoopGoverningIVUtility ivUtility(loopGoverningIVAttr->getInductionVariable(), *loopGoverningIVAttr);
+    errs() << "---331\n";
+    // errs() << *task->getTaskBody() << "\n";
+    if (loopGoverningIVAttr == nullptr) {
+        errs() << "---333\n";
+        return;
+    }
+    LoopGoverningIVUtility ivUtility(*loopGoverningIVAttr);
+    errs() << "---332\n";
     auto cmpInst = cast<CmpInst>(task->getCloneOfOriginalInstruction(loopGoverningIVAttr->getHeaderCmpInst()));
+    errs() << "---336-brInst:" << *task->getCloneOfOriginalInstruction(loopGoverningIVAttr->getHeaderBrInst()) << "\n";
     auto brInst = cast<BranchInst>(task->getCloneOfOriginalInstruction(loopGoverningIVAttr->getHeaderBrInst()));
+    
     auto basicBlockToJumpToWhenTheLoopEnds = task->getLastBlock(0);
     ivUtility.updateConditionAndBranchToCatchIteratingPastExitValue(cmpInst, brInst, basicBlockToJumpToWhenTheLoopEnds);
     auto updatedCmpInst = cmpInst;
@@ -527,6 +533,7 @@ void DOALL::addPredecessorAndSuccessorsBasicBlockToTasks(LoopDependenceInfo * LD
     * Fetch the loop function.
     */
     auto loopFunction = loopSummary->getFunction();
+    // errs() << "loopFunction : " << *loopFunction << "\n";
 
     /*
     * Fetch the loop structure.
@@ -536,10 +543,13 @@ void DOALL::addPredecessorAndSuccessorsBasicBlockToTasks(LoopDependenceInfo * LD
     /*
     * Setup original loop and task with functions and basic blocks for wiring
     */
+    errs() << "---525\n";
     auto &cxt = loopFunction->getContext();
     this->entryPointOfParallelizedLoop = BasicBlock::Create(cxt, "", loopFunction);
+    // errs() << "entryBB: " << *entryPointOfParallelizedLoop << "\n";
     this->exitPointOfParallelizedLoop = BasicBlock::Create(cxt, "", loopFunction);
-
+    // errs() << "exitBB: " << *exitPointOfParallelizedLoop << "\n";
+    errs() << "---528\n";
     this->numOfTaskInstantces = taskStructs.size();
     for (auto i = 0; i < this->numOfTaskInstantces; ++i) {
         auto task = taskStructs[i];
@@ -606,7 +616,7 @@ void DOALL::initEnvironmentBuilder(LoopDependenceInfo * LDI, std::set<int>nonRed
 
 void DOALL::cloneSeqLoop(LoopDependenceInfo * LDI, int taskIndex) {
     //fetch the task
-    //auto& ctx = this->M->getContext();
+    auto& ctx = this->M->getContext();
     auto task = this->tasks[taskIndex];
 
     //code to filter out instructions we don't want to clone
@@ -663,8 +673,8 @@ void DOALL::cloneMemoryLocationsLocallyAndRewireLoop(LoopDependenceInfo * LDI, i
     auto memoryCloningAnalysis = LDI->getMemoryCloningAnalysis();
     auto envUser = this->envBuilder->getUser(taskIndex);
 
-    task->getTaskBody()->print(errs());
-    rootLoop->getFunction()->print(errs());
+    // task->getTaskBody()->print(errs());
+    // rootLoop->getFunction()->print(errs());
 
     //check every task object that can be safely cloned
     for (auto location : memoryCloningAnalysis->getClonableMemoryLocations()) {
@@ -788,8 +798,8 @@ void DOALL::cloneMemoryLocationsLocallyAndRewireLoop(LoopDependenceInfo * LDI, i
     }
     
     errs() << "---after---memorycloneANDrewireloop\n";
-    task->getTaskBody()->print(errs());
-    rootLoop->getFunction()->print(errs());
+    // task->getTaskBody()->print(errs());
+    // rootLoop->getFunction()->print(errs());
 
 }
 
@@ -906,73 +916,74 @@ void DOALL::setReducableVarsToBeginAtIdentifyValue(LoopDependenceInfo * LDI, int
 
 
 void DOALL::generateCodeToStoreLiveOutVars(LoopDependenceInfo * LDI, int taskIndex) {
-    //fetch the task
-    auto task = this->tasks[taskIndex];
+    // //fetch the task
+    // auto task = this->tasks[taskIndex];
 
-    //create a builder that points to the entry point of the function executed by the task
-    auto entryBlock = task->getEntry();
-    auto entryTerminator = entryBlock->getTerminator();
-    IRBuilder<> entryBuilder(entryTerminator);
+    // //create a builder that points to the entry point of the function executed by the task
+    // auto entryBlock = task->getEntry();
+    // auto entryTerminator = entryBlock->getTerminator();
+    // IRBuilder<> entryBuilder(entryTerminator);
 
-    auto& taskFunction = *(task->getTaskBody());
-    //DominatorTree taskDT(taskFunction);
-    DominatorTree& taskDT = getAnalysis<DominatorTree>(taskFunction);
-    PostDominatorTree& taskPDT = getAnalysis<PostDominatorTree>(taskFunction);
-    DominatorSummary taskDS(taskDT, taskPDT);
+    // auto& taskFunction = *(task->getTaskBody());
+    // //DominatorTree taskDT(taskFunction);
+    // DominatorTree& taskDT = getAnalysis<DominatorTree>(taskFunction);
+    // PostDominatorTree& taskPDT = getAnalysis<PostDominatorTree>(taskFunction);
+    // DominatorSummary taskDS(taskDT, taskPDT);
 
-    // Iterate over live-out variables and inject stores at the end of the execution of the function of the task to propagate the new live-out values back to the caller of the parallelized loop.
+    // // Iterate over live-out variables and inject stores at the end of the execution of the function of the task to propagate the new live-out values back to the caller of the parallelized loop.
     
-    auto envUser = this->envBuilder->getUser(taskIndex);
-    for (auto envIndex : envUser->getEnvIndicesOfLiveOutVars()) {
+    // auto envUser = this->envBuilder->getUser(taskIndex);
+    // for (auto envIndex : envUser->getEnvIndicesOfLiveOutVars()) {
 
-        // Fetch the producer of the current live-out variable.
-        // Fetch the clones of the producer. If none are specified in the one-to-many mapping,
-        // assume the direct cloning of the producer is the only clone
-        auto producer = (Instruction*)LDI->loopEnviroment->producerAT(envIndex);
-        if (!task->doesOriginalLiveOutHaveManyClones(producer)) {
-            auto singleProducerClone = task->getCloneOfOriginalInstruction(producer);
-            task->addLiveOut(producer, singleProducerClone);
-        }
-        auto producerClones = task->getClonesOfOriginalLiveOut(producer);
+    //     // Fetch the producer of the current live-out variable.
+    //     // Fetch the clones of the producer. If none are specified in the one-to-many mapping,
+    //     // assume the direct cloning of the producer is the only clone
+    //     auto producer = (Instruction*)LDI->loopEnviroment->producerAT(envIndex);
+    //     if (!task->doesOriginalLiveOutHaveManyClones(producer)) {
+    //         auto singleProducerClone = task->getCloneOfOriginalInstruction(producer);
+    //         task->addLiveOut(producer, singleProducerClone);
+    //     }
+    //     auto producerClones = task->getClonesOfOriginalLiveOut(producer);
 
-        // Create GEP access of the single, or reducable, environment variable
-        auto envType = producer->getType();
-        auto isReduced = this->envBuilder->isReduced(envIndex);
-        if (isReduced) {
-            envUser->createReducableEnvPtr(entryBuilder, envIndex, envType, this->numOfTaskInstantces, task->getTaskInstanceID());
-        } else {
-            envUser->createEnvPtr(entryBuilder, envIndex, envType);
-        }
-        auto envPtr = envUser->getEnvPtr(envIndex);
+    //     // Create GEP access of the single, or reducable, environment variable
+    //     auto envType = producer->getType();
+    //     auto isReduced = this->envBuilder->isReduced(envIndex);
+    //     if (isReduced) {
+    //         envUser->createReducableEnvPtr(entryBuilder, envIndex, envType, this->numOfTaskInstantces, task->getTaskInstanceID());
+    //     } else {
+    //         envUser->createEnvPtr(entryBuilder, envIndex, envType);
+    //     }
+    //     auto envPtr = envUser->getEnvPtr(envIndex);
  
-        // If the variable is reducable, store the identity as the initial value
-        if (isReduced) {
+    //     // If the variable is reducable, store the identity as the initial value
+    //     if (isReduced) {
 
-            // Fetch the operator of the accumulator instruction for this reducable variable
-            // Store the identity value of the operator
-            auto identityV = this->getIdentityValueForEnvValue(LDI, envIndex, envType);
-            entryBuilder.CreateStore(identityV, envPtr);
-        }
+    //         // Fetch the operator of the accumulator instruction for this reducable variable
+    //         // Store the identity value of the operator
+    //         auto identityV = this->getIdentityValueForEnvValue(LDI, envIndex, envType);
+    //         entryBuilder.CreateStore(identityV, envPtr);
+    //     }
 
         
-        // Inject store instructions to propagate live-out values back to the caller of the parallelized loop.
-        for (auto producerClone : producerClones) {
-            auto insertBBs = this->determineLatestPointsToInsertLiveOutStore(LDI, taskIndex, producerClone, isReduced, taskDS);
-            for (auto BB : insertBBs) {
-                auto producerValueToStore = isReduced
-                ? this->fetchOrCreatePHIForIntermediateProducerValueOfReducibleLiveOutVariable(LDI, taskIndex, envIndex, BB, taskDS)
-                : producerClone;
+    //     // Inject store instructions to propagate live-out values back to the caller of the parallelized loop.
+    //     for (auto producerClone : producerClones) {
+    //         auto insertBBs = this->determineLatestPointsToInsertLiveOutStore(LDI, taskIndex, producerClone, isReduced, taskDS);
+    //         for (auto BB : insertBBs) {
+    //             auto producerValueToStore = isReduced
+    //             ? this->fetchOrCreatePHIForIntermediateProducerValueOfReducibleLiveOutVariable(LDI, taskIndex, envIndex, BB, taskDS)
+    //             : producerClone;
 
-                IRBuilder<> liveOutBuilder(BB);
-                auto store = (StoreInst*)liveOutBuilder.CreateStore(producerValueToStore, envPtr);
-                store->removeFromParent();
-                store->insertBefore(BB->getTerminator());
-            }
-        }
-    }
+    //             IRBuilder<> liveOutBuilder(BB);
+    //             auto store = (StoreInst*)liveOutBuilder.CreateStore(producerValueToStore, envPtr);
+    //             store->removeFromParent();
+    //             store->insertBefore(BB->getTerminator());
+    //         }
+    //     }
+    // }
 }
 
-void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f, Master& master) {
+// void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f, Master& master) {
+void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f) {
     // Create the environment.
     this->allocateEnvironmentArray(LDI);
     this->populateLiveInEnvironment(LDI);
@@ -981,10 +992,10 @@ void DOALL::addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI,
     auto envPtr = envBuilder->getEnvArrayInt8Ptr();
 
     // Fetch the number of cores
-    auto numCores = ConstantInt::get(master.int64ptr, LDI->getMaxCoreNumber());
+    auto numCores = ConstantInt::get(IntegerType::get(this->M->getContext(), 64), LDI->getMaxCoreNumber()); // IntegerType::get(M.getContext(), 64);
 
     // Fetch the chunk size
-    auto chunkSize = ConstantInt::get(master.int64ptr, LDI->DOALLChunkSize);
+    auto chunkSize = ConstantInt::get(IntegerType::get(this->M->getContext(), 64), LDI->DOALLChunkSize); // IntegerType::get(M.getContext(), 64);
 
     // Call the function that incudes the parallelized loop.
     IRBuilder<> doallBuilder(this->entryPointOfParallelizedLoop);

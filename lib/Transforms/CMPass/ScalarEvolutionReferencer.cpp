@@ -175,20 +175,26 @@ SCEVReference *visitCouldNotCompute (const SCEVCouldNotCompute* S) {
 SCEVValueMapper::SCEVValueMapper (ScalarEvolution &SE, Function &F) {
   // for (auto &A : F.args()) {
   for (Function::arg_iterator ArgIt = F.arg_begin(); ArgIt != F.arg_end(); ++ArgIt) {
+    errs() << "--178\n";
     if (!SE.isSCEVable((*ArgIt).getType())) continue;
     auto scev = SE.getSCEV(&*ArgIt);
     scevToValues[scev].insert(&*ArgIt);
     valueToSCEV[&*ArgIt] = scev;
   }
-
+  // errs() << "--184 Function:" << F << "\n";
   for (auto &B : F) {
+    // errs() << "--186: " << B << "\n";
     for (auto &I : B) {
+      // errs() << "--188\n";
+      // errs() << I << "\n";
+      if (I.getType() == nullptr) continue;
       if (!SE.isSCEVable(I.getType())) continue;
       auto scev = SE.getSCEV(&I);
       scevToValues[scev].insert(&I);
       valueToSCEV[&I] = scev;
     }
   }
+  errs() << "--193\n";
 }
 
 Value *SCEVValueMapper::getSingleValueOf(const SCEV *scev) const {

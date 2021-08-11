@@ -6,7 +6,7 @@
 
 class DOALLTask {
 public:
-    DOALLTask(uint32_t ID, FunctionType * funcType, Module& M);
+    DOALLTask(uint32_t ID, FunctionType * funcType, Module * M);
 
     uint32_t getID(void) const;
 
@@ -85,13 +85,28 @@ public:
     Value *chunkSizeArg, *coreArg, *numCoresArg;
     Value * envArg, *instanceIndexV;
 
+    void setLoopHeader(BasicBlock * loopH);
+    void setLoopLatch(BasicBlock * loopL);
+    void setWhereToInsertFunc(Instruction * inst);
+    void addLiveInVar(Value * liveIn);
+    void setSafeCheckCallInstsInLoopBody(std::vector<Instruction *> checkcalls);
+    void setSafeCheckInstsInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> safecodes);
+    void setAllInstsToOneCallInstInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> allinsts);    
+    void transform();
+    bool isOriginalLiveInVar(Value * v);
+    void clearClones();
+    void setLiveInInitVal(std::unordered_map<Value *, Value *> initMap);
+    void eraseSafeCheckCodes();
+
 private:
     uint32_t ID;
     Function * F;
+    Module * M;
 
     //one-to-one mapping between the original live in value and a pointer
     //to the environment where that original live in values is stored for use by the task
     std::unordered_map<Value *, Value *> liveInClones;
+
 
     std::unordered_map<Instruction*, std::unordered_set<Instruction*>> liveOutClones;
 
@@ -99,12 +114,31 @@ private:
     std::unordered_map<BasicBlock *, BasicBlock *> basicBlockClones;
     std::unordered_map<Instruction*, Instruction*> instructionClones;
 
-    BasicBlock * entryBlock;
-    BasicBlock * exitBlock;
+    BasicBlock * entryBlock; // loop preheader, directly jump to loop header
+    BasicBlock * exitBlock; //loopExit --- ret void
 
     std::vector<BasicBlock *> lastBlocks;
 
+    BasicBlock * loopHeader;
+    BasicBlock * newLoopHeader;
+    BasicBlock * loopLatch;
+    BasicBlock * newLoopLatch;
+    Instruction * whereToInsertFunc;
+    std::vector<Instruction *> safeCheckCallInstsInLoopBody;
+    std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
+    std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
+    BasicBlock * newLoopBody;
+
+    std::vector<Value *> liveInVars;
+    std::map<uint32_t, Constant *> ctors;
+
+    std::unordered_map<Value *, Value *> liveInInitValue;
     LLVMContext& getTaskLLVMContext(void) const;
+
+    void genCtorForSpawn(Module * M, Function * wrapperFunc);
+    std::vector<Value *> genSpawnArgs(Module * M, Function * wrapperFunc);
+
+    std::mt19937 loopSeed;
 };
 
 #endif

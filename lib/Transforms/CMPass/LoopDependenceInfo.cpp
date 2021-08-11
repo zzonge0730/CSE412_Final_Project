@@ -39,6 +39,7 @@ LoopDependenceInfo::LoopDependenceInfo(PDG * pdg, Loop * loop, DominatorSummary&
 
     //collect induction variable information
     auto iv = this->inductionVariables->getLoopGoverningInductionVariable(*this->loopSummary.getLoop(*loop->getHeader()));
+    if (iv == nullptr) errs() << "---42 iv\n";
     loopGoverningIVAttribution = iv == nullptr ? nullptr : new LoopGoverningIVAttribution(*iv, *loopSCCDAG->sccOfValue(iv->getLoopEntryPHI()), loopExitBlocks);
 
 }
@@ -105,18 +106,18 @@ std::pair<PDG *, SCCDAG *> LoopDependenceInfo::createDGsForLoop(Loop* loop, PDG*
     auto ivManager = InductionVariableManager(this->loopSummary, invManager, se, preRefinedSCCDAG, loopEnv);
     auto domainSpace = LoopIterationDomainSpaceAnalysis(this->loopSummary, ivManager, se);
 
-    //enable loop-aware memory dependence analysis
-    if (this->areLoopAwareAnalysisEnabled) {
-        refinePDGWithLoopAwareMemDepAnalysis(loopDG, loopStructure, &this->loopSummary, &domainSpace);
-    }
+    // enable loop-aware memory dependence analysis
+    // if (this->areLoopAwareAnalysisEnabled) {
+    //     refinePDGWithLoopAwareMemDepAnalysis(loopDG, loopStructure, &this->loopSummary, &domainSpace);
+    // }
 
     //Analyze the loop to identify opportunities of cloning stack objects
-    this->removeUnnecessaryDependenciesThatCloningMemoryNegates(loopDG, ds);
+    // this->removeUnnecessaryDependenciesThatCloningMemoryNegates(loopDG, ds);
 
     //remove mmeory dependences with know thread-safe library functions
     //is there any thread-safe library function for SoftBoundCETS?
     //may be we should hack it, and make it thread-safe
-    this->removeUnnecessaryDependenciesWithThreadSafeLibraryFunctions(loopDG, ds);
+    // this->removeUnnecessaryDependenciesWithThreadSafeLibraryFunctions(loopDG, ds);
 
     //Build a SCCDAG of loop-internal instructions
     loopInternalPDG = loopDG->createSubgraphFromValues(loopInternals, false);

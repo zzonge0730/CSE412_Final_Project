@@ -169,7 +169,7 @@ StayConnectedNestedLoopForest::StayConnectedNestedLoopForest (
     return ;
   }
       
-  std::unordered_set<StayConnectedNestedLoopForestNode *> StayConnectedNestedLoopForest::getTrees (void) const {
+  std::set<StayConnectedNestedLoopForestNode *> StayConnectedNestedLoopForest::getTrees (void) const {
     return this->trees;
   }
 

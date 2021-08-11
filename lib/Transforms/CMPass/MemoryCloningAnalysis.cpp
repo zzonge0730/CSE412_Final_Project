@@ -387,7 +387,12 @@ bool ClonableMemoryLocation::identifyStoresAndOtherUsers (LoopStructure *loop, D
        * All users must be within the loop or dominate the loop
        */
       auto inst = cast<Instruction>(user);
-      if (!loop->isIncluded(inst)) { inst->print(errs() << "Outside loop!: "); errs() << "\n"; }
+      if (inst == nullptr) continue;
+      if (!loop->isIncluded(inst)) { 
+        // inst->print(errs() << "Outside loop!: "); 
+        // errs() << "Outside loop!: " << *inst << "\n";
+        // errs() << "\n"; 
+      }
       if (!loop->isIncluded(inst)) {
         auto block = inst->getParent();
         auto header = loop->getHeader();

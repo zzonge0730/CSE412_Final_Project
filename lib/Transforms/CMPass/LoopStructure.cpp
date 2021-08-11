@@ -43,6 +43,8 @@ LoopStructure::LoopStructure(Loop* loop, LoopStructure* parentLoop) : parent{par
     this->exitEdges = std::vector<std::pair<const BasicBlock *, const BasicBlock *>>(ExitEdges.begin(), ExitEdges.end());
 
     this->ID = LoopStructure::globalID++;
+
+    calculateLoopBody();
 }
 
 uint64_t LoopStructure::getID(void) const {
@@ -199,7 +201,10 @@ void LoopStructure::print(raw_ostream & stream) {
     // header->begin()->print(stream);
     header->print(stream);
     stream << "--->Loop Body: " << "\n";
-    for (auto bb : BBs) {
+    // for (auto bb : BBs) {
+    //     bb->print(stream);
+    // }
+    for (auto bb : orderedBBs) {
         bb->print(stream);
     }
     stream << "--->Loop Latch: " << "\n";
@@ -209,6 +214,12 @@ void LoopStructure::print(raw_ostream & stream) {
     stream << "--->Loop Exit: " << "\n";
     for (auto exitBB : exitBlocks) {
         exitBB->print(stream);
+    }
+
+    stream << "--->Loop Invariant: " << "\n";
+    for (auto inv : this->invariants) {
+        // inv->print(stream);
+        errs() << *inv << "\n";
     }
 
     stream << "\n";
@@ -221,3 +232,16 @@ bool LoopStructure::isContainedInstructionLoopInvariant(Instruction *inst) const
     return this->invariants.find(inst) != this->invariants.end();
 }
 
+void LoopStructure::calculateLoopBody(void) {
+    // orderedBBs - loopheaderBB - looplatchBBs
+    std::unordered_set<BasicBlock *> prologue(this->latchBBs.begin(), this->latchBBs.end());
+    prologue.insert(this->header);
+
+    std::set_difference(this->orderedBBs.begin(), this->orderedBBs.end(), 
+                        prologue.begin(), prologue.end(),
+    std::inserter(this->bodyBBs, this->bodyBBs.begin()));
+}
+
+std::unordered_set<BasicBlock *> LoopStructure::getLoopBody(void) {
+    return this->bodyBBs;
+}

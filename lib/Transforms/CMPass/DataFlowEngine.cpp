@@ -71,7 +71,7 @@ DataFlowResult * DataFlowEngine::applyBackward(
         for (BasicBlock &BB : *f) {
             workList.push_front(&BB);// ~~backward~~so use push_front
         }
-
+        // errs() << "DF--74\n";
         //compute INs and OUTs iteratively until the working list is empty.
         while(!workList.empty()) {
             //fetch a basic block that needs to be processed
@@ -86,7 +86,7 @@ DataFlowResult * DataFlowEngine::applyBackward(
             auto &outSetOfInst = dfRes->OUT(inst);
             auto &genSetOfInst = dfRes->GEN(inst);
             auto &killSetOfInst = dfRes->KILL(inst);
-
+            // errs() << "DF--89\n";
             //compute OUT
             for (succ_iterator I = succ_begin(bb); I != succ_end(bb); I++) {
                 BasicBlock * BB = *I;
@@ -100,23 +100,28 @@ DataFlowResult * DataFlowEngine::applyBackward(
             //compute IN
             int oldSize = inSetOfInst.size();
             computeIN(inSetOfInst, inst, dfRes);
-
+            // errs() << "DF--103\n";
             //check if IN[Inst] changed
             int newSize = inSetOfInst.size();
             if (newSize > oldSize || computedOnceBB.find(bb) == computedOnceBB.end()) {
                 //record that we have now computed this basic block
                 computedOnceBB.insert(bb);
-
+                // errs() << "DF--109\n";
                 //propagate the new IN[inst] to the rest of the instructions of the current basic block
                 BasicBlock::iterator iter(inst);
+                // errs() << "DF--112\n";
                 auto succI = cast<Instruction>(inst);
+                // errs() << "DF--114\n";
+                // if (bb == nullptr) errs() << "DF--115\n";
+                // if (iter != bb->begin()) errs() << "DF--116\n";
                 while (iter != bb->begin()) {
                     //move the iterator
+                    // errs() << "DF--117\n";
                     iter--;
-
+                    // errs() << "DF--118\n";
                     //fetch the current instruction
                     auto curInst = &*iter;
-
+                    // errs() << "DF--119\n";
                     //compute OUT[curInst]
                     auto &outSetOfCurInst = dfRes->OUT(curInst);
                     computeOUT(outSetOfCurInst, succI, dfRes);
@@ -124,17 +129,18 @@ DataFlowResult * DataFlowEngine::applyBackward(
                     //compute IN[curInst]
                     auto &inSetOfCurInst = dfRes->IN(curInst);
                     computeIN(inSetOfCurInst, curInst, dfRes);
-                    
+                    // errs() << "DF--127\n";
                     //update the successor
                     succI = curInst;
                 }
-
+                // errs() << "DF--131\n";
                 //add predecessors of the current basic block to the working list
                 for (pred_iterator predI = pred_begin(bb); predI != pred_end(bb); predI++) {
                     workList.push_back(*predI);
                 }
             }
         }
+        // errs() << "DF--138\n";
 
         return dfRes;
 }

@@ -5,6 +5,10 @@
 #include "LoopStructure.h"
 #include "PDG.h"
 #include "PDGAnalysis.h"
+#include "DominatorSummary.h"
+#include "StayConnectedNestedLoopForest.h"
+#include "DOALL.h"
+
 #include "llvm/Analysis/CallGraph.h"
 
 #include <queue>
@@ -39,6 +43,26 @@ private:
 
     PDG * getFunctionDependenceGraph(Function * func);
 
+    StayConnectedNestedLoopForest * organizeLoopsInTheirNestingForest(
+        std::vector<LoopStructure *> const & loops
+    );
+
+    DominatorSummary * getDominators(Function * f);
+
+    std::vector<LoopDependenceInfo *> selectTheOrderOfLoopsToParallelize(StayConnectedNestedLoopForestNode * tree);
+
+    bool parallelizeLoop(LoopDependenceInfo * LDI, DOALL& doall);
+
+    void linkTransformedLoopToOriginalFunction(
+    Module * M,
+    BasicBlock * originalPreHeader,
+    BasicBlock * startOfParallelizeLoopInOriginalFunc,
+    BasicBlock * endOfParallelizedLoopInOriginalFunc,
+    Value * envArray,
+    Value * envIndexForExitVariable,
+    std::vector<BasicBlock*>& loopExitBlocks);
+
+    
 };
 
 #endif

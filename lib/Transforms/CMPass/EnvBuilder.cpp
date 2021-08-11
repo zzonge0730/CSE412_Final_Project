@@ -98,7 +98,9 @@ EnvBuilder::EnvBuilder (LLVMContext &cxt)
 }
 
 EnvBuilder::~EnvBuilder () {
-  for (auto user : envUsers) delete user;
+  for (auto user : envUsers) {
+    if (user) delete user;
+  }
 }
 
 void EnvBuilder::createEnvUsers (int numUsers) {

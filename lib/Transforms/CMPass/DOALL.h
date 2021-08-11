@@ -5,7 +5,6 @@
 #include "llvm/Pass.h"
 
 #include "LoopDependenceInfo.h"
-#include "Master.h"
 #include "DOALLTask.h"
 #include "EnvBuilder.h"
 #include "IVStepperUtility.h"
@@ -15,20 +14,17 @@
 
 using namespace llvm;
 
-class DOALL : public ModulePass {
+class DOALL {
 public:
-    static char ID;
-    DOALL();
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
-    bool runOnModule(Module& M) override;
-    bool doInitialization (Module& M) override;
+    DOALL(Module & module);
     ~DOALL();
-    bool apply(LoopDependenceInfo * LDI, Master& master);
+    // bool apply(LoopDependenceInfo * LDI, Master& master);
+    bool apply(LoopDependenceInfo * LDI);
 
-    bool canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& master);
-
-    static std::unordered_set<SCC *> getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI, Master& cat);
-
+    // bool canBeAppliedToLoop(LoopDependenceInfo * LDI, Master& master);
+    bool canBeAppliedToLoop(LoopDependenceInfo * LDI);
+    // static std::unordered_set<SCC *> getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI, Master& cat);
+    static std::unordered_set<SCC *> getSCCsThatBlockDOALLToBeApplicable(LoopDependenceInfo * LDI);
 
     void reset(void);
 
@@ -59,7 +55,8 @@ protected:
 
     void generateCodeToStoreLiveOutVars(LoopDependenceInfo * LDI, int taskIndex);
 
-    void addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f, Master& master);
+    // void addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f, Master& master);
+    void addChunkFunctionExecutionAsideOriginalLoop(LoopDependenceInfo * LDI, Function * f);
 
     PHINode * fetchLoopEntryPHIOfProducer(LoopDependenceInfo * LDI, Value * producer);
 

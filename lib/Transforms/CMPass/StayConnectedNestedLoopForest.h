@@ -51,7 +51,7 @@ class StayConnectedNestedLoopForest ;
         std::unordered_map<Function *, DominatorSummary *> const &doms
         );
 
-      std::unordered_set<StayConnectedNestedLoopForestNode *> getTrees (void) const ;
+      std::set<StayConnectedNestedLoopForestNode *> getTrees (void) const ;
 
       void removeTree (StayConnectedNestedLoopForestNode *tree) ;
       
@@ -61,7 +61,7 @@ class StayConnectedNestedLoopForest ;
 
     private:
       std::unordered_map<LoopStructure *, StayConnectedNestedLoopForestNode *> nodes;
-      std::unordered_set<StayConnectedNestedLoopForestNode *> trees;
+      std::set<StayConnectedNestedLoopForestNode *> trees;
       std::unordered_map<Function *, std::unordered_set<LoopStructure *>> functionLoops;
       std::unordered_map<BasicBlock *, StayConnectedNestedLoopForestNode *> headerLoops;
 

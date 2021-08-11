@@ -9,6 +9,8 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/ADT/StringSet.h"
 
+#include "Utils.h"
+
 using namespace llvm;
 
 class PDGAnalysis : public ModulePass {

@@ -164,7 +164,7 @@ public:
     }
 
     llvm::iterator_range<node_map_iterator> getExternalNodePairs() {
-        return llvm::make_range(externalNodeMap.begin(), internalNodeMap.end());
+        return llvm::make_range(externalNodeMap.begin(), externalNodeMap.end());
     }
 
     //fetch / create nodes and edges
@@ -534,14 +534,20 @@ template <class T>
 DGEdge<T> *DG<T>::copyAddEdge(DGEdge<T> &edgeToCopy) {
     auto edge = new DGEdge<T>(edgeToCopy);
     allEdges.insert(edge);
-
     auto nodePair = edgeToCopy.getNodePair();
     auto fromNode = fetchNode(nodePair.first->getT());
     auto toNode = fetchNode(nodePair.second->getT());
     edge->setNodePair(fromNode, toNode);
-
     fromNode->addOutgoingEdge(edge);
+    // assert(toNode == nullptr && "toNode is nullptr");
+    // assert(edge == nullptr && "edge is nullptr");
+    if (toNode == nullptr) {
+        errs() << "---546\n";
+        errs() << "nodePair.first: " << nodePair.first->toString() << "\n";
+        errs() << "nodePair.second: " << nodePair.second->toString() << "\n";
+    }
     toNode->addIncomingEdge(edge);
+    // errs() << "---540\n";
     return edge;
 }
 

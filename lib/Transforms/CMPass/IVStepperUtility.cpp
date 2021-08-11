@@ -109,9 +109,12 @@ Value *IVUtility::offsetIVPHI (
  * LoopGoverningIVUtility implementation
  */
 
-LoopGoverningIVUtility::LoopGoverningIVUtility (InductionVariable &IV, LoopGoverningIVAttribution &attribution)
+LoopGoverningIVUtility::LoopGoverningIVUtility (LoopGoverningIVAttribution &attribution)
   : attribution{attribution}, conditionValueOrderedDerivation{},
     flipOperandsToUseNonStrictPredicate{false}, flipBrSuccessorsToUseNonStrictPredicate{false} {
+
+  //fetch the IV
+  auto IV = attribution.getInductionVariable();
 
   condition = attribution.getHeaderCmpInst();
   // TODO: Refer to whichever intermediate value is used in the comparison (known on attribution)

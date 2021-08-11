@@ -14,26 +14,26 @@ bool IsSafeCheckCall(CallInst *CI){
         callName.startswith("__ubsan_")){
             if (callName.equals("__softboundcets_init") ||
                 callName.equals("__softboundcets_dummy") ||
-                callName.equals("__softboundcets_abort")
-                // callName.equals("__softboundcets_metadata_load") ||
+                callName.equals("__softboundcets_abort") ||
+                callName.equals("__softboundcets_metadata_load") ||
                 // callName.equals("__softboundcets_temporal_load_dereference_check") ||
                 // callName.equals("__softboundcets_spatial_load_dereference_check") ||
                 // callName.equals("__softboundcets_temporal_store_dereference_check") ||
                 // callName.equals("__softboundcets_spatial_store_dereference_check") ||
-                // callName.equals("__softboundcets_stack_memory_allocation") ||
-                // callName.equals("__softboundcets_load_base_shadow_stack") ||
-                // callName.equals("__softboundcets_load_bound_shadow_stack") ||
-                // callName.equals("__softboundcets_load_key_shadow_stack") ||
-                // callName.equals("__softboundcets_load_lock_shadow_stack") ||
-                // callName.equals("__softboundcets_get_global_lock") ||
-                // callName.equals("__softboundcets_metadata_store") ||
-                // callName.equals("__softboundcets_allocate_shadow_stack_space") ||
-                // callName.equals("__softboundcets_store_base_shadow_stack") ||
-                // callName.equals("__softboundcets_store_bound_shadow_stack") ||
-                // callName.equals("__softboundcets_store_key_shadow_stack") ||
-                // callName.equals("__softboundcets_store_lock_shadow_stack") ||
-                // callName.equals("__softboundcets_deallocate_shadow_stack_space") ||
-                // callName.equals("__softboundcets_stack_memory_deallocation")
+                callName.equals("__softboundcets_stack_memory_allocation") ||
+                callName.equals("__softboundcets_load_base_shadow_stack") ||
+                callName.equals("__softboundcets_load_bound_shadow_stack") ||
+                callName.equals("__softboundcets_load_key_shadow_stack") ||
+                callName.equals("__softboundcets_load_lock_shadow_stack") ||
+                callName.equals("__softboundcets_get_global_lock") ||
+                callName.equals("__softboundcets_metadata_store") ||
+                callName.equals("__softboundcets_allocate_shadow_stack_space") ||
+                callName.equals("__softboundcets_store_base_shadow_stack") ||
+                callName.equals("__softboundcets_store_bound_shadow_stack") ||
+                callName.equals("__softboundcets_store_key_shadow_stack") ||
+                callName.equals("__softboundcets_store_lock_shadow_stack") ||
+                callName.equals("__softboundcets_deallocate_shadow_stack_space") ||
+                callName.equals("__softboundcets_stack_memory_deallocation")
             ){
                 return false;
             }
@@ -50,26 +50,26 @@ bool IsSafeCheckFun(StringRef funcName) {
         funcName.startswith("__ubsan_")){
             if (funcName.equals("__softboundcets_init") ||
                 funcName.equals("__softboundcets_dummy") ||
-                funcName.equals("__softboundcets_abort") 
-                // funcName.equals("__softboundcets_metadata_load") ||
+                funcName.equals("__softboundcets_abort") ||
+                funcName.equals("__softboundcets_metadata_load") ||
                 // funcName.equals("__softboundcets_temporal_load_dereference_check") ||
                 // funcName.equals("__softboundcets_spatial_load_dereference_check") ||
                 // funcName.equals("__softboundcets_temporal_store_dereference_check") ||
                 // funcName.equals("__softboundcets_spatial_store_dereference_check") ||
-                // funcName.equals("__softboundcets_stack_memory_allocation") ||
-                // funcName.equals("__softboundcets_load_base_shadow_stack") ||
-                // funcName.equals("__softboundcets_load_bound_shadow_stack") ||
-                // funcName.equals("__softboundcets_load_key_shadow_stack") ||
-                // funcName.equals("__softboundcets_load_lock_shadow_stack") ||
-                // funcName.equals("__softboundcets_get_global_lock") ||
-                // funcName.equals("__softboundcets_metadata_store") ||
-                // funcName.equals("__softboundcets_allocate_shadow_stack_space") ||
-                // funcName.equals("__softboundcets_store_base_shadow_stack") ||
-                // funcName.equals("__softboundcets_store_bound_shadow_stack") ||
-                // funcName.equals("__softboundcets_store_key_shadow_stack") ||
-                // funcName.equals("__softboundcets_store_lock_shadow_stack") ||
-                // funcName.equals("__softboundcets_deallocate_shadow_stack_space") ||
-                // funcName.equals("__softboundcets_stack_memory_deallocation")
+                funcName.equals("__softboundcets_stack_memory_allocation") ||
+                funcName.equals("__softboundcets_load_base_shadow_stack") ||
+                funcName.equals("__softboundcets_load_bound_shadow_stack") ||
+                funcName.equals("__softboundcets_load_key_shadow_stack") ||
+                funcName.equals("__softboundcets_load_lock_shadow_stack") ||
+                funcName.equals("__softboundcets_get_global_lock") ||
+                funcName.equals("__softboundcets_metadata_store") ||
+                funcName.equals("__softboundcets_allocate_shadow_stack_space") ||
+                funcName.equals("__softboundcets_store_base_shadow_stack") ||
+                funcName.equals("__softboundcets_store_bound_shadow_stack") ||
+                funcName.equals("__softboundcets_store_key_shadow_stack") ||
+                funcName.equals("__softboundcets_store_lock_shadow_stack") ||
+                funcName.equals("__softboundcets_deallocate_shadow_stack_space") ||
+                funcName.equals("__softboundcets_stack_memory_deallocation")
                 ) {
                 return false;
             }
@@ -89,6 +89,45 @@ bool IsMemAccessInst(Instruction &I) {
            isa<AtomicCmpXchgInst>(I) ||
            isa<AtomicRMWInst>(I) ||
            isa<GetElementPtrInst>(I);
+}
+
+bool isAllocator(CallInst * callInst) {
+    if (callInst == nullptr) return false;
+    
+    auto callee = callInst->getCalledFunction();
+    if (callee == nullptr) return false;
+
+    //check if it is a call to a library
+    if (!callee->empty()) return false;
+
+    auto calleeName = callee->getName();
+    if (calleeName == "malloc" ||
+    calleeName == "calloc" || 
+    calleeName == "realloc" ||
+    calleeName == "softboundcets_malloc" ||
+    calleeName == "softboundcets_calloc" ||
+    calleeName == "softboundcets_realloc") {
+        return true;
+    }
+
+    return false;
+}
+
+bool isDeallocator(CallInst * callInst) {
+    if (callInst == nullptr) return false;
+
+    auto callee = callInst->getCalledFunction();
+    if (callee == nullptr) return false;
+
+    if (!callee->empty()) return false;
+
+    auto calleeName = callee->getName();
+    if (calleeName == "free" || 
+    calleeName == "softboundcets_free") {
+        return true;
+    }
+
+    return false;
 }
 
 // static std::set<std::string> SoftBoundCETSLibCalls {

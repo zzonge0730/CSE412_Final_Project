@@ -49,7 +49,7 @@ void IdentifyPass::DebugPrint() const {
     // for (iter2 = SafeCheckInstructions.begin(); iter2 != SafeCheckInstructions.end(); iter2++) {
     //     errs() << iter2->first << " : " << iter2->second.size() << "\n";
         
-    //     std::set<llvm::Instruction*>::const_iterator inst_iter1;
+    //     std::set<Instruction*>::const_iterator inst_iter1;
     //     for (inst_iter1 = iter2->second.begin(); inst_iter1 != iter2->second.end(); inst_iter1++) {
     //         errs() << *(*inst_iter1) << "\n";
     //     }
@@ -60,7 +60,7 @@ void IdentifyPass::DebugPrint() const {
     // for (iter3 = OriginCodeInstructions.begin(); iter3 != OriginCodeInstructions.end(); iter3++) {
     //     errs() << iter3->first << " : " << iter3->second.size() << "\n";
 
-    //     std::list<llvm::Instruction*>::const_iterator inst_iter2;
+    //     std::list<Instruction*>::const_iterator inst_iter2;
     //     for (inst_iter2 = iter3->second.begin(); inst_iter2 != iter3->second.end(); inst_iter2++) {
     //         errs() << *(*inst_iter2) << "\n";
     //     }
@@ -71,7 +71,7 @@ void IdentifyPass::DebugPrint() const {
     // for (iter4 = SafeCheckInstructionsThemselves.begin(); iter4 != SafeCheckInstructionsThemselves.end(); iter4++) {
     //     errs() << iter4->first << " : " << iter4->second.size() << "\n";
 
-    //     std::list<llvm::Instruction*>::const_iterator inst_iter3;
+    //     std::list<Instruction*>::const_iterator inst_iter3;
     //     for (inst_iter3 = iter4->second.begin(); inst_iter3 != iter4->second.end(); inst_iter3++) {
     //         errs() << *(*inst_iter3) << "\n";
     //     }
@@ -83,7 +83,7 @@ void IdentifyPass::DebugPrint() const {
     for (iter5 = InstructionsBySafeCheck.begin(); iter5 != InstructionsBySafeCheck.end(); iter5++) {
         errs() << *(iter5->first) << " : " << iter5->second.size() << "\n";
 
-        std::set<llvm::Instruction*>::const_iterator inst_iter4;
+        std::set<Instruction*>::const_iterator inst_iter4;
         for (inst_iter4 = iter5->second.begin(); inst_iter4 != iter5->second.end(); inst_iter4++) {
             errs() << *(*inst_iter4) << "\n";
         }
@@ -95,7 +95,7 @@ void IdentifyPass::DebugPrint() const {
     // for (iter6 = SCBranches.begin(); iter6 != SCBranches.end(); iter6++) {
     //     errs() << iter6->first << " : " << iter6->second.size() << "\n";
 
-    //     std::list<llvm::Instruction*>::const_iterator inst_iter5;
+    //     std::list<Instruction*>::const_iterator inst_iter5;
     //     for (inst_iter5 = iter6->second.begin(); inst_iter5 != iter6->second.end(); inst_iter5++) {
     //         errs() << *(*inst_iter5) << "\n";
     //     }
@@ -249,7 +249,7 @@ void IdentifyPass::findInstructions(Function *F) {
 
     //find all used value by safecheck calls
     std::set<Instruction*> worklist;
-    std::list<llvm::Instruction*>::const_iterator inst_iter2;
+    std::list<Instruction*>::const_iterator inst_iter2;
     for (auto it = OriginCodeInstructions[F].rbegin(); it !=OriginCodeInstructions[F].rend(); ++it) {
         Instruction * curInst = *it;
         // errs () << "Current Inst: " << *curInst << "\n";

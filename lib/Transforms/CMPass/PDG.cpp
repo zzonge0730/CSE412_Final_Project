@@ -134,10 +134,11 @@ void PDG::copyEdgesInto(PDG * pdg, bool linkToExternal, std::unordered_set<DGEdg
         if(!linkToExternal &&(!fromInclusion || !toInclusion)) continue;
 
         //create appropriate external nodes and associate edge to them
-        auto newFromNode = isInGraph(fromT) ? fetchNode(fromT) : addNode(fromT, fromInclusion); 
-        auto toFromNode = isInGraph(toT) ? fetchNode(toT) : addNode(toT, toInclusion);
+        auto newFromNode = pdg->isInGraph(fromT) ? pdg->fetchNode(fromT) : pdg->addNode(fromT, fromInclusion); 
+        auto toFromNode = pdg->isInGraph(toT) ? pdg->fetchNode(toT) : pdg->addNode(toT, toInclusion);
 
         // copy edge to match properties
+        if (oldEdge == nullptr) continue;
         pdg->copyAddEdge(*oldEdge);
     }
 }

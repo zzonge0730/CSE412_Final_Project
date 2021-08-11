@@ -6,6 +6,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 
+
 #include <memory>
 #include <utility>
 
@@ -16,6 +17,9 @@ bool IsSafeCheckFun(StringRef funcName);
 
 bool IsEmittingInst(Instruction &I);
 bool IsMemAccessInst(Instruction &I);
+
+bool isAllocator(CallInst * callInst);
+bool isDeallocator(CallInst * callInst);
 
 // template<typename T, typename... Args>
 // std::unique_ptr<T> make_unique(Args&&... args) {

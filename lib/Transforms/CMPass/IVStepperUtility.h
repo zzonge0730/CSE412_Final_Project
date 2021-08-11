@@ -38,7 +38,7 @@ class IVUtility {
 
 class LoopGoverningIVUtility {
 public:
-    LoopGoverningIVUtility (InductionVariable &IV, LoopGoverningIVAttribution &attribution) ;
+    LoopGoverningIVUtility (LoopGoverningIVAttribution &attribution) ;
 
     LoopGoverningIVUtility () = delete ;
 
