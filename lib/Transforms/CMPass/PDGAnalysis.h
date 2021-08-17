@@ -94,6 +94,16 @@ private:
         //             break;
         //     }
         // }
+        if (isa<StoreInst>(instI) && isa<LoadInst>(instJ)) {
+            StoreInst * tmpStoreInst = cast<StoreInst>(instI);
+            LoadInst * tmpLoadInst = cast<LoadInst>(instJ);
+            // errs() << "Store: " << *tmpStoreInst << "\n";
+            // errs() << "Load: " << *tmpLoadInst << "\n";
+            if (tmpStoreInst->getPointerOperand() == tmpLoadInst->getPointerOperand()) {
+                // errs() << "--103\n";
+                must = true; 
+            }
+        }
 
         //there is a dependence
         pdg->addEdge((Value*)instI, (Value*)instJ)->setMemMustType(true, must, dpType);

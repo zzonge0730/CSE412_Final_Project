@@ -62,6 +62,7 @@ private:
     Value * envIndexForExitVariable,
     std::vector<BasicBlock*>& loopExitBlocks);
 
+    bool instHappensBefore(Instruction * inst, Instruction * final);
     
 };
 

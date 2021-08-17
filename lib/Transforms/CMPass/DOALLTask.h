@@ -3,6 +3,7 @@
 
 
 #include "SCCDAGAttrs.h"
+#include "LoopDependenceInfo.h"
 
 class DOALLTask {
 public:
@@ -97,6 +98,11 @@ public:
     void clearClones();
     void setLiveInInitVal(std::unordered_map<Value *, Value *> initMap);
     void eraseSafeCheckCodes();
+    void setLDI(LoopDependenceInfo * LDI);
+    void splitLoop();
+    void setOldLoopBody(std::unordered_set<BasicBlock *> oldBBs);
+    void setICmpInstRelated(std::unordered_set<Instruction *> instSet);
+    void setBitCastLiveInVarRelated(std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastMap);
 
 private:
     uint32_t ID;
@@ -127,6 +133,9 @@ private:
     std::vector<Instruction *> safeCheckCallInstsInLoopBody;
     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
     std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
+    std::unordered_set<BasicBlock *> oldLoopBody;
+    std::unordered_set<Instruction *> icmpInstRelated;
+    std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastLiveInVarRelated;
     BasicBlock * newLoopBody;
 
     std::vector<Value *> liveInVars;
@@ -139,6 +148,18 @@ private:
     std::vector<Value *> genSpawnArgs(Module * M, Function * wrapperFunc);
 
     std::mt19937 loopSeed;
+    // std::vector<BasicBlock *> 
+    
+    // void doSplit();
+
+    LoopDependenceInfo * LDI;
+
+    bool instIsInLoopBody(Instruction * inst);
+    bool instIsInAllInstsToOneCall(Instruction * inst);
+    bool instIsInICmpInstRelated(Instruction * inst);
+    bool hasStoreInstInNewLoopBody(Value * liveIn);
+
+    
 };
 
 #endif

@@ -79,6 +79,8 @@ public:
 
     std::unordered_set<BasicBlock *> getLoopBody(void);
 
+    bool isLoopExitBlock(BasicBlock * bb);
+
 private:
     uint64_t ID;
     BasicBlock * header;

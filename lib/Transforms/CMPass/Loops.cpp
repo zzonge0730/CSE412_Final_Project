@@ -111,6 +111,14 @@ bool Loops::runOnModule(Module &M) {
         // errs() << "tree: " << &tree << "\n";
         auto loopsToParallelize = this->selectTheOrderOfLoopsToParallelize(*treeIt); 
         errs() << "loops size: " << loopsToParallelize.size() << "\n";
+        //get max nestinglevel
+        
+        std::set<uint32_t> levelSet;
+        for (auto loop : loopsToParallelize) {
+            levelSet.insert(loop->getLoopStructure()->getNestingLevel());
+        }
+        uint32_t maxNestingLevel = *--levelSet.end();
+
         //parallelize the loops
         for (auto loop : loopsToParallelize) {
             //check if we can parallelize the loop
@@ -122,27 +130,36 @@ bool Loops::runOnModule(Module &M) {
             // ls->print(ros);
             // ros.flush();
             // errs() << str << "\n";
-            auto safe = true;
-            for (auto BB : ls->getBasicBlocks()) {
-                if (modifiedBBs[BB]) {
-                    safe = false;
-                    break;
-                }
-            }
+            // auto safe = true;
+            // for (auto BB : ls->getBasicBlocks()) {
+            //     if (modifiedBBs[BB]) {
+            //         safe = false;
+            //         break;
+            //     }
+            // }
             auto loopID = ls->getID();
-            if (!safe) {
-                errs() << "Parallelizer: LoopID:" << loopID << "cannot be parallelized because one of its parent has been parallelized already...\n";
-                continue;
-            }
+            // if (!safe) {
+            //     errs() << "Parallelizer: LoopID:" << loopID << "cannot be parallelized because one of its parent has been parallelized already...\n";
+            //     continue;
+            // }
 
             //parallelize the current loop
             // auto loopIsParallelized = this->parallelizeLoop(loop, doall);
 
+            //print loop PDG
+            PDG * loopPDG = loop->getLoopPDG();
+            errs() << "loopID: " << loopID << " 's pdg: " <<"\n";
+            std::string loopStr;
+            raw_string_ostream loopRos(loopStr);
+            loopPDG->print(loopRos);
+            loopRos.flush();
+            errs() << loopStr << "\n";
+            errs() << "----------------\n";
 
             //determine whether the curret loop should be paralleled
-            //for now, we only consider the outer most loop
+            //for now, we only consider the inner most loop
             //that's to say, the nest level  is 1
-            if (ls->getNestingLevel() == 1) {
+            if (ls->getNestingLevel() == maxNestingLevel) {
                 //define the signature of the task
                 //should be modified later on, may be dynamically decided
                 auto& ctx = this->program->getContext();
@@ -155,8 +172,24 @@ bool Loops::runOnModule(Module &M) {
                 
                 //create a task
                 DOALLTask * task = new DOALLTask(loopID, funcType, this->program);
+                BasicBlock * loopPreHeader = ls->getPreHeader();
+                //record where to insert the loop function
+                Instruction * whereToInsertFunc = loopPreHeader->getTerminator();
+                BasicBlock * loopHeader = ls->getHeader();
+                errs() << "whereToInsertFunc Before: " << *whereToInsertFunc << "\n";
+                task->setWhereToInsertFunc(whereToInsertFunc);
+                //copy loop header
+                task->setLoopHeader(loopHeader);
+                if (ls->getLatches().size() == 1) {
+                    // copy loop latch
+                    task->setLoopLatch(*ls->getLatches().begin());
+                } else {
+                    errs() << "some thing wrong in loop latch...\n";
+                }
+
                 PDG * wholePdg = this->pdgAnalysis->getPDG();
                 std::unordered_map<Value *, Value *> liveInInitVal;
+                std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastLiveInVarRelated;
                 // get liveIn Vars
                 for (auto envIndex : loop->loopEnviroment->getEnvIndicesOfLiveInVars()) {
                     loop->loopEnviroment->producerAT(envIndex)->print(errs()
@@ -181,7 +214,12 @@ bool Loops::runOnModule(Module &M) {
                             }
                         }
                     }
+
+                    if (isa<BitCastInst>(cast<Instruction>(liveIn))) {
+                        bitcastLiveInVarRelated[liveIn] = {};
+                    }
                 }
+
                 for (auto pair : liveInInitVal) {
                     for (auto subedge : wholePdg->getEdges()) {
                         auto fromNodeSubT = subedge->getOutgoingNode()->getT();
@@ -189,9 +227,14 @@ bool Loops::runOnModule(Module &M) {
 
                         if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(pair.first) ) {
                             if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                                if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && !ls->isIncluded(cast<Instruction>(toNodeSubT))) {
+                                if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && !ls->isIncluded(cast<Instruction>(toNodeSubT))) { // 
                                     // means this liveInVar need init value
-                                    liveInInitVal[pair.first] = cast<StoreInst>(toNodeSubT)->getOperand(0); 
+                                    Value * storeVal = cast<StoreInst>(toNodeSubT)->getOperand(0);
+                                    // toNodeSubT happens before wheretoInsertFunc
+
+                                    if (instHappensBefore(cast<StoreInst>(toNodeSubT), whereToInsertFunc)) {
+                                        liveInInitVal[pair.first] = storeVal;
+                                    }
                                 }
                             }
                         }
@@ -204,30 +247,109 @@ bool Loops::runOnModule(Module &M) {
                 task->setLiveInInitVal(liveInInitVal);
 
 
-                BasicBlock * loopPreHeader = ls->getPreHeader();
-                //record where to insert the loop function
-                Instruction * whereToInsertFunc = loopPreHeader->getTerminator();
-                BasicBlock * loopHeader = ls->getHeader();
-                errs() << "whereToInsertFunc Before: " << *whereToInsertFunc << "\n";
-                task->setWhereToInsertFunc(whereToInsertFunc);
-                //copy loop header
-                task->setLoopHeader(loopHeader);
-                if (ls->getLatches().size() == 1) {
-                    // copy loop latch
-                    task->setLoopLatch(*ls->getLatches().begin());
-                } else {
-                    errs() << "some thing wrong in loop latch...\n";
+                // analysis liveInVars relations
+                for (auto pair : bitcastLiveInVarRelated) {
+                    std::unordered_set<Instruction *> workListForBitcast{cast<Instruction>(pair.first)};
+                    std::unordered_set<Instruction *> related{};
+                    while(!workListForBitcast.empty()) {
+                        Instruction * inst = *workListForBitcast.begin();
+                        workListForBitcast.erase(inst);
+                        for (auto subedge : wholePdg->getEdges()) {
+                            auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                            auto toNodeSubT = subedge->getIncomingNode()->getT();
+
+                            if (cast<Instruction>(toNodeSubT) == inst ) {
+                                if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
+                                    if (related.count(cast<Instruction>(fromNodeSubT)) <= 0 && !ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                                        workListForBitcast.insert(cast<Instruction>(fromNodeSubT));
+                                        related.insert(cast<Instruction>(fromNodeSubT));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    bitcastLiveInVarRelated[pair.first] = related;
                 }
+                for (auto pair : bitcastLiveInVarRelated) {
+                    errs() << "bitcastliveIn: " << *pair.first << "\n";
+                    for (auto inst : pair.second) {
+                        errs() << "relatedInst: " << *inst << "\n";
+                    }
+                }
+                task->setBitCastLiveInVarRelated(bitcastLiveInVarRelated);
+
+
 
                 // get safeCheckCallInstInLoopBody
                 std::vector<Instruction *> safecheckCallInst;
                 std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
                 std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
                 std::unordered_set<BasicBlock *> loopBody = ls->getLoopBody();
+                //need orderedBasicBlocks
+                // std::unordered_map<BasicBlock *, std::vector<BasicBlock *>> loopBodyBasicBlock;
+                
+                std::unordered_set<Instruction *> customedFunRelatedCodeInLoop;
+                bool relatedFlag = false;
+                for (auto BB : ls->orderedBBs) {
+                    for (auto& I : *BB) {
+                        if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+                            StringRef callName = CI->getCalledFunction()->getName();
+                            if (callName.startswith("__softboundcets_allocate_shadow_stack_space")) {
+                                relatedFlag = true;
+                            }
+                            if (callName.startswith("__softboundcets_deallocate_shadow_stack_space")) {
+                                customedFunRelatedCodeInLoop.insert(&I);
+                                relatedFlag = false;
+                            }
+                            if (relatedFlag) {
+                                customedFunRelatedCodeInLoop.insert(&I);
+                            }
+                        }
+                    }
+                }
+                for (auto inst : customedFunRelatedCodeInLoop) {
+                    errs() << "codeFunRelatedInst: " << *inst << "\n";
+                }
 
+                std::unordered_set<Instruction *> workListForCustFunCode(customedFunRelatedCodeInLoop.begin(), customedFunRelatedCodeInLoop.end());
+                while (!workListForCustFunCode.empty()) {
+                    Instruction * inst = *workListForCustFunCode.begin();
+                    workListForCustFunCode.erase(inst);
+                    for (auto edge : loopPDG->getEdges()) {
+                        Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
+                        Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
+
+                        if (toNodeInst == inst) {
+                            if (edge->isMustDependence() && 
+                            edge->dataDepToString() == "RAW") {
+                                if (customedFunRelatedCodeInLoop.count(fromNodeInst) <= 0 && ls->isIncluded(fromNodeInst)) {
+                                    workListForCustFunCode.insert(fromNodeInst);
+                                    customedFunRelatedCodeInLoop.insert(fromNodeInst);
+                                }
+                                
+                            }
+                        }
+
+                        if (fromNodeInst == inst) {
+                            if (edge->isMustDependence() && 
+                            edge->dataDepToString() == "RAW") {
+                                if (customedFunRelatedCodeInLoop.count(toNodeInst) <= 0 && ls->isIncluded(toNodeInst)) {
+                                    workListForCustFunCode.insert(toNodeInst);
+                                    customedFunRelatedCodeInLoop.insert(toNodeInst);
+                                }
+                                
+                            }   
+                        }
+                    }
+                }
+                for (auto inst : customedFunRelatedCodeInLoop) {
+                    errs() << "codeFunRelatedInst111: " << *inst << "\n";
+                }
                 
-                
+                // cal safeCheckCallInst, safeCheckInstsInLoopBody, allInstsToOneCallInstInLoopBody, 
+                std::unordered_set<Instruction *> icmpInstRelated;
                 for (auto body : loopBody) {
+                    errs() << "loopBody: " << *body << "\n";
                     for (auto& I : *body) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                             if (IsSafeCheckCall(CI)) {
@@ -235,9 +357,47 @@ bool Loops::runOnModule(Module &M) {
                                 //SafeCheckSet.insert(&I);
                             }
                         }
+
+                        if (ICmpInst *icmpInst = dyn_cast<ICmpInst>(&I)) {
+                            icmpInstRelated.insert(&I);
+                        }
                     }
                 }
-                
+                std::unordered_set<Instruction *> workListForICmpInstRelated(icmpInstRelated.begin(), icmpInstRelated.end());
+                while (!workListForICmpInstRelated.empty()) {
+                    Instruction * inst = *workListForICmpInstRelated.begin();
+                    workListForICmpInstRelated.erase(inst);
+                    for (auto edge : loopPDG->getEdges()) {
+                        Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
+                        Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
+                        if (toNodeInst == inst) {
+                            if (edge->isMustDependence() && 
+                            edge->dataDepToString() == "RAW") {
+                                if (icmpInstRelated.count(fromNodeInst) <= 0
+                                && ls->isIncluded(fromNodeInst)) {
+                                    icmpInstRelated.insert(fromNodeInst);
+                                    workListForICmpInstRelated.insert(fromNodeInst);
+                                }
+                            }
+                        }
+
+                        if (fromNodeInst == inst) {
+                            if (edge->isMustDependence() && 
+                            edge->dataDepToString() == "RAW") {
+                                if (icmpInstRelated.count(toNodeInst) <= 0
+                                && ls->isIncluded(toNodeInst)) {
+                                    icmpInstRelated.insert(toNodeInst);
+                                    workListForICmpInstRelated.insert(toNodeInst);
+                                }
+                            }
+                        }
+
+                        
+                    }
+                }
+                for (auto inst : icmpInstRelated) {
+                    errs() << "icmpInstRelate: " << *inst << "\n";
+                }
                 for (auto callInst : safecheckCallInst) {
                     std::set<Instruction *> safeCheckInsts;
                     std::set<Instruction *> workList; // for %base.load call_metadata_load and so on
@@ -254,11 +414,14 @@ bool Loops::runOnModule(Module &M) {
                                 if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) {
                                     errs() << "--- " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
                                 } else {
-                                    // TODO: judge is inside the loop 
-                                    safeCheckInsts.insert(cast<Instruction>(fromNodeSubT));
-                                    if (isa<LoadInst>(cast<Instruction>(fromNodeSubT))) { // %base.load = load xxx
-                                        workList.insert(cast<Instruction>(fromNodeSubT));
+                                    
+                                    if (safeCheckInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                                        safeCheckInsts.insert(cast<Instruction>(fromNodeSubT));
+                                        if (isa<LoadInst>(cast<Instruction>(fromNodeSubT))) { // %base.load = load xxx
+                                            workList.insert(cast<Instruction>(fromNodeSubT));
+                                        }
                                     }
+                                    
                                 }
                                 
                             }
@@ -284,9 +447,11 @@ bool Loops::runOnModule(Module &M) {
                                     if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
                                         errs() << "^^^ " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
                                     } else {
-                                        // TODO: judge is inside the loop 
-                                        allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
-                                        worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                                        if (allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                                            allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
+                                            worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                                        }
+                                            
                                     }                                
                                 }
                             }
@@ -307,9 +472,10 @@ bool Loops::runOnModule(Module &M) {
                                     if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
                                         errs() << "*** " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
                                     } else {
-                                        // TODO: judge is inside the loop 
-                                        allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
-                                        worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                                        if ( allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                                            allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
+                                            worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                                        }
                                     }                                
                                 }
                             }
@@ -320,36 +486,102 @@ bool Loops::runOnModule(Module &M) {
                     allInstsToOneCallInstInLoopBody[callInst] = allInstsToOneCall;
                 }
 
-
+                //print some info for debugging
+                std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter11;
+                for (iter11 = safeCheckInstsInLoopBody.begin(); iter11 != safeCheckInstsInLoopBody.end(); ++iter11) {
+                    
+                    for (auto I : iter11->second) {
+                        errs() << *I <<"\n";
+                    }
+                    errs() << "--A-" << *(iter11->first) << " has : " << iter11->second.size() << "\n";
+                }
+                errs() << "^^^^^safeCheckInstsInLoopBodyBeforeRemoved^^^^^\n";
+                std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter21;
+                for (iter21 = allInstsToOneCallInstInLoopBody.begin(); iter21 != allInstsToOneCallInstInLoopBody.end(); ++iter21) {
+                    
+                    for (auto I : iter21->second) {
+                        errs() << *I <<"\n";
+                    }
+                    errs() << "--B-" << *(iter21->first) << " has : " << iter21->second.size() << "\n";
+                }
+                errs() << "^^^^^allInstsToOneCallInstInLoopBodyBeforeRemoved^^^^^\n";
+                for (auto inst : customedFunRelatedCodeInLoop) {
+                    errs() << "CustFunInst: " << *inst << "\n";
+                }
+                
+                //cal safeCheckInstsInLoopBody - customedFuncRelatedCode
+                //cal allInstsToOneCallInstInLoopBody - customedFuncRelateCode
+                std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBodyFinal;
+                std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBodyFinal;
+                for (auto pair : safeCheckInstsInLoopBody) {
+                    bool removed = false;
+                    for (auto I : pair.second) {
+                        for (auto inst : customedFunRelatedCodeInLoop) {
+                            // errs() << "inst: " << *inst << "\n";
+                            // errs() << "I: " << *I << "\n";
+                            if (inst == I || inst == pair.first) {
+                                errs() << "removed...\n";
+                                removed = true;
+                            }
+                        }
+                    }
+                    if (!removed) {
+                        // errs() << "-428-\n";
+                        // safeCheckInstsInLoopBody.erase(pair.first);
+                        safeCheckInstsInLoopBodyFinal[pair.first] = pair.second;
+                    }
+                }
+                errs() << "^^^^^433^^^^^\n";
+                for (auto pair : allInstsToOneCallInstInLoopBody) {
+                    bool removed = false;
+                    for (auto I : pair.second) {
+                        for (auto inst : customedFunRelatedCodeInLoop) {
+                            if (inst == I || inst == pair.first) {
+                                removed = true;
+                            }
+                        }
+                    }
+                    if (!removed) {
+                        // errs() << "-441-\n";
+                        // allInstsToOneCallInstInLoopBody.erase(pair.first);
+                        allInstsToOneCallInstInLoopBodyFinal[pair.first] = pair.second;
+                    }
+                }
+                
+                errs() << "^^^^^customedFunRelatedCodeInLoop^^^^^\n";
 
                 // get safeCheckInstsInLoopBody (Call + bitcast + load alloca...etc)
                 // get allInstsToOneCallInLoopBody (Call + bitcast + load alloca... + original code(load,store,etc))
                 task->setSafeCheckCallInstsInLoopBody(safecheckCallInst);
-                task->setSafeCheckInstsInLoopBody(safeCheckInstsInLoopBody);
-                task->setAllInstsToOneCallInstInLoopBody(allInstsToOneCallInstInLoopBody);
+                task->setSafeCheckInstsInLoopBody(safeCheckInstsInLoopBodyFinal);
+                task->setAllInstsToOneCallInstInLoopBody(allInstsToOneCallInstInLoopBodyFinal);
+                task->setOldLoopBody(loopBody);
+                task->setICmpInstRelated(icmpInstRelated);
+                
 
                 
 
+                task->setLDI(loop);
                 //push task into looptask
                 loopTasks.push_back(task);
 
                 //print some info for debugging
                 std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter1;
-                for (iter1 = safeCheckInstsInLoopBody.begin(); iter1 != safeCheckInstsInLoopBody.end(); ++iter1) {
+                for (iter1 = safeCheckInstsInLoopBodyFinal.begin(); iter1 != safeCheckInstsInLoopBodyFinal.end(); ++iter1) {
                     errs() << *(iter1->first) << " has : " << iter1->second.size() << "\n";
                     for (auto I : iter1->second) {
                         errs() << *I <<"\n";
                     }
                 }
-                errs() << "^^^^^safeCheckInstsInLoopBody^^^^^\n";
+                errs() << "^^^^^safeCheckInstsInLoopBodyAfterRemoved^^^^^\n";
                 std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter2;
-                for (iter2 = allInstsToOneCallInstInLoopBody.begin(); iter2 != allInstsToOneCallInstInLoopBody.end(); ++iter2) {
+                for (iter2 = allInstsToOneCallInstInLoopBodyFinal.begin(); iter2 != allInstsToOneCallInstInLoopBodyFinal.end(); ++iter2) {
                     errs() << *(iter2->first) << " has : " << iter2->second.size() << "\n";
                     for (auto I : iter2->second) {
                         errs() << *I <<"\n";
                     }
                 }
-                errs() << "^^^^^allInstsToOneCallInstInLoopBody^^^^^\n";
+                errs() << "^^^^^allInstsToOneCallInstInLoopBodyAfterRemoved^^^^^\n";
             }
 
 
@@ -374,13 +606,13 @@ bool Loops::runOnModule(Module &M) {
 
 
             //keep track of the parallelization
-            if (true) {
-                errs() << "Parallelizer: Loop " << loopID << " has been parallelized.\n";
-                modified = true;
-                for (auto bb : ls->getBasicBlocks()) {
-                    modifiedBBs[bb] = true;
-                }
-            }
+            // if (true) {
+            //     errs() << "Parallelizer: Loop " << loopID << " has been parallelized.\n";
+            //     modified = true;
+            //     for (auto bb : ls->getBasicBlocks()) {
+            //         modifiedBBs[bb] = true;
+            //     }
+            // }
         }
 
 
@@ -396,7 +628,8 @@ bool Loops::runOnModule(Module &M) {
     // transform those loopTasks
     for (auto task : loopTasks) {
         errs() << "---naive task: " << "\n";
-        task->transform();
+        // task->transform();
+        task->splitLoop();
         errs() << "---final task: " << "\n";
     }
 
@@ -798,5 +1031,22 @@ void Loops::linkTransformedLoopToOriginalFunction(
 
 }
 
-
+bool Loops::instHappensBefore(Instruction * inst, Instruction * final) {
+    Function * parentFunc = final->getParent()->getParent();
+    bool flag = false;
+    for (BasicBlock& BB : *parentFunc) {
+        for (Instruction& I : BB) {
+            if (inst == &I) {
+                flag = true;
+            }
+            if (final == &I) {
+                if (flag) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+}
 

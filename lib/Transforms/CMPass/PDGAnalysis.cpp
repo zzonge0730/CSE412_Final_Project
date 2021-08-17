@@ -610,13 +610,13 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
            break;
     }
     bool specialRAW = false;
-    errs() << "611: call: " << *call << ", NumOfArg: " << call->getNumArgOperands() <<"\n";
+    // errs() << "611: call: " << *call << ", NumOfArg: " << call->getNumArgOperands() <<"\n";
     for (int i = 0; i < call->getNumArgOperands(); i++) {
-        errs() << "Arg-" << i << " is: " << *(call->getArgOperand(i)) << "\n";
+        // errs() << "Arg-" << i << " is: " << *(call->getArgOperand(i)) << "\n";
         if (call->getArgOperand(i) == load->getOperand(0)) specialRAW = true;
     }
-    errs() << "611: load: " << *load << ", 0Op: " << *(load->getOperand(0)) << "\n";
-    errs() << "addEdgeFromCall: " << addEdgeFromCall << "\n";
+    // errs() << "611: load: " << *load << ", 0Op: " << *(load->getOperand(0)) << "\n";
+    // errs() << "addEdgeFromCall: " << addEdgeFromCall << "\n";
     //there is a dependence
     if (addEdgeFromCall) {
         pdg->addEdge((Value *)call, (Value *)load)->setMemMustType(true, false, DG_DATA_RAW);

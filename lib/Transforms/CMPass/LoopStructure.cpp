@@ -245,3 +245,13 @@ void LoopStructure::calculateLoopBody(void) {
 std::unordered_set<BasicBlock *> LoopStructure::getLoopBody(void) {
     return this->bodyBBs;
 }
+
+bool LoopStructure::isLoopExitBlock(BasicBlock * bb) {
+    for (auto BB : this->exitBlocks) {
+        if (bb == BB) {
+            return true;
+        }
+    }
+    return false;
+
+}
