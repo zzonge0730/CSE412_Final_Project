@@ -87,13 +87,13 @@ public:
     Value * envArg, *instanceIndexV;
 
     void setLoopHeader(BasicBlock * loopH);
-    void setLoopLatch(BasicBlock * loopL);
+    // void setLoopLatch(BasicBlock * loopL);
     void setWhereToInsertFunc(Instruction * inst);
     void addLiveInVar(Value * liveIn);
     void setSafeCheckCallInstsInLoopBody(std::vector<Instruction *> checkcalls);
     void setSafeCheckInstsInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> safecodes);
     void setAllInstsToOneCallInstInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> allinsts);    
-    void transform();
+    // void transform();
     bool isOriginalLiveInVar(Value * v);
     void clearClones();
     void setLiveInInitVal(std::unordered_map<Value *, Value *> initMap);
@@ -103,6 +103,9 @@ public:
     void setOldLoopBody(std::unordered_set<BasicBlock *> oldBBs);
     void setICmpInstRelated(std::unordered_set<Instruction *> instSet);
     void setBitCastLiveInVarRelated(std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastMap);
+    void setJoinFunc(Constant * joinF);
+    void setJoinPoints(std::unordered_set<Instruction *> joinPoints);
+
 
 private:
     uint32_t ID;
@@ -127,8 +130,8 @@ private:
 
     BasicBlock * loopHeader;
     BasicBlock * newLoopHeader;
-    BasicBlock * loopLatch;
-    BasicBlock * newLoopLatch;
+    // BasicBlock * loopLatch;
+    // BasicBlock * newLoopLatch;
     Instruction * whereToInsertFunc;
     std::vector<Instruction *> safeCheckCallInstsInLoopBody;
     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
@@ -140,6 +143,8 @@ private:
 
     std::vector<Value *> liveInVars;
     std::map<uint32_t, Constant *> ctors;
+    Constant * joinFunc;
+    std::unordered_set<Instruction *> joinPoints;
 
     std::unordered_map<Value *, Value *> liveInInitValue;
     LLVMContext& getTaskLLVMContext(void) const;
@@ -158,6 +163,8 @@ private:
     bool instIsInAllInstsToOneCall(Instruction * inst);
     bool instIsInICmpInstRelated(Instruction * inst);
     bool hasStoreInstInNewLoopBody(Value * liveIn);
+    bool liveInNeedACMem(Value * liveIn);
+    bool isLocalVarLiveIn(Value * liveIn);
 
     
 };

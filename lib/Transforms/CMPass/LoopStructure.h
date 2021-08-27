@@ -80,6 +80,7 @@ public:
     std::unordered_set<BasicBlock *> getLoopBody(void);
 
     bool isLoopExitBlock(BasicBlock * bb);
+    bool isInLoopLatch(Instruction * inst);
 
 private:
     uint64_t ID;

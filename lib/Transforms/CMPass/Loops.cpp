@@ -99,7 +99,7 @@ bool Loops::runOnModule(Module &M) {
         // tree->visitPreOrder(printTree);
     }
 
-    // DOALL doall(M);
+    Constant * joinFunc = generateJoinFunc();
 
     //parallelize the loop we selected, from outermost to the inner ones
     bool modified = false;
@@ -113,11 +113,12 @@ bool Loops::runOnModule(Module &M) {
         errs() << "loops size: " << loopsToParallelize.size() << "\n";
         //get max nestinglevel
         
-        std::set<uint32_t> levelSet;
+        // std::set<uint32_t> levelSet;
+        std::unordered_set<BasicBlock *> loopPreHeaders;
         for (auto loop : loopsToParallelize) {
-            levelSet.insert(loop->getLoopStructure()->getNestingLevel());
+            loopPreHeaders.insert(loop->getLoopStructure()->getPreHeader());
         }
-        uint32_t maxNestingLevel = *--levelSet.end();
+        // uint32_t maxNestingLevel = *--levelSet.end();
 
         //parallelize the loops
         for (auto loop : loopsToParallelize) {
@@ -137,6 +138,7 @@ bool Loops::runOnModule(Module &M) {
             //         break;
             //     }
             // }
+
             auto loopID = ls->getID();
             // if (!safe) {
             //     errs() << "Parallelizer: LoopID:" << loopID << "cannot be parallelized because one of its parent has been parallelized already...\n";
@@ -148,18 +150,27 @@ bool Loops::runOnModule(Module &M) {
 
             //print loop PDG
             PDG * loopPDG = loop->getLoopPDG();
-            errs() << "loopID: " << loopID << " 's pdg: " <<"\n";
-            std::string loopStr;
-            raw_string_ostream loopRos(loopStr);
-            loopPDG->print(loopRos);
-            loopRos.flush();
-            errs() << loopStr << "\n";
+            // errs() << "loopID: " << loopID << " 's pdg: " <<"\n";
+            // std::string loopStr;
+            // raw_string_ostream loopRos(loopStr);
+            // loopPDG->print(loopRos);
+            // loopRos.flush();
+            // errs() << loopStr << "\n";
             errs() << "----------------\n";
 
             //determine whether the curret loop should be paralleled
-            //for now, we only consider the inner most loop
+            //for now, we only consider the outer most loop
             //that's to say, the nest level  is 1
-            if (ls->getNestingLevel() == maxNestingLevel) {
+            if (ls->getNestingLevel() == 1) {
+
+                // for (auto BB : ls->getBasicBlocks()) {
+                //     errs() << "---BB: " << *BB << "\n";
+                // }
+
+                // for (auto BB : ls->getLoopExitBasicBlocks()) {
+                //     errs() << "---exit: " << *BB <<"\n";
+                // }
+
                 //define the signature of the task
                 //should be modified later on, may be dynamically decided
                 auto& ctx = this->program->getContext();
@@ -178,14 +189,25 @@ bool Loops::runOnModule(Module &M) {
                 BasicBlock * loopHeader = ls->getHeader();
                 errs() << "whereToInsertFunc Before: " << *whereToInsertFunc << "\n";
                 task->setWhereToInsertFunc(whereToInsertFunc);
+
+                //set join func
+                task->setJoinFunc(joinFunc);
+                //set join Points, before return this function there should be join points for each parallel loop
+                std::unordered_set<Instruction *> joinPoints;
+                for (BasicBlock& BB : *loopHeader->getParent()) {
+                    for (Instruction& inst : BB) {
+                        if (isa<ReturnInst>(&inst)) {    
+                            joinPoints.insert(&inst);
+                        }
+                    }
+                }
+                task->setJoinPoints(joinPoints);
+
+
                 //copy loop header
                 task->setLoopHeader(loopHeader);
-                if (ls->getLatches().size() == 1) {
-                    // copy loop latch
-                    task->setLoopLatch(*ls->getLatches().begin());
-                } else {
-                    errs() << "some thing wrong in loop latch...\n";
-                }
+                
+
 
                 PDG * wholePdg = this->pdgAnalysis->getPDG();
                 std::unordered_map<Value *, Value *> liveInInitVal;
@@ -219,8 +241,9 @@ bool Loops::runOnModule(Module &M) {
                         bitcastLiveInVarRelated[liveIn] = {};
                     }
                 }
-
+                
                 for (auto pair : liveInInitVal) {
+                    StoreInst * theLastStoreInst = nullptr;
                     for (auto subedge : wholePdg->getEdges()) {
                         auto fromNodeSubT = subedge->getOutgoingNode()->getT();
                         auto toNodeSubT = subedge->getIncomingNode()->getT();
@@ -230,10 +253,20 @@ bool Loops::runOnModule(Module &M) {
                                 if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && !ls->isIncluded(cast<Instruction>(toNodeSubT))) { // 
                                     // means this liveInVar need init value
                                     Value * storeVal = cast<StoreInst>(toNodeSubT)->getOperand(0);
-                                    // toNodeSubT happens before wheretoInsertFunc
-
-                                    if (instHappensBefore(cast<StoreInst>(toNodeSubT), whereToInsertFunc)) {
-                                        liveInInitVal[pair.first] = storeVal;
+                                    // find the last toNodeSubT happens before wheretoInsertFunc
+                                    // and not in loopLatch BB
+                                    if (instHappensBefore(cast<StoreInst>(toNodeSubT), whereToInsertFunc) && 
+                                    loopPreHeaders.count(cast<StoreInst>(toNodeSubT)->getParent()) > 0) {
+                                        if (theLastStoreInst == nullptr) {
+                                            theLastStoreInst = cast<StoreInst>(toNodeSubT);
+                                            liveInInitVal[pair.first] = storeVal;
+                                        } else {
+                                            if (!instHappensBefore(cast<StoreInst>(toNodeSubT), theLastStoreInst)) {
+                                                theLastStoreInst = cast<StoreInst>(toNodeSubT);
+                                                liveInInitVal[pair.first] = storeVal;
+                                            }
+                                        }
+                                        
                                     }
                                 }
                             }
@@ -374,7 +407,7 @@ bool Loops::runOnModule(Module &M) {
                             if (edge->isMustDependence() && 
                             edge->dataDepToString() == "RAW") {
                                 if (icmpInstRelated.count(fromNodeInst) <= 0
-                                && ls->isIncluded(fromNodeInst)) {
+                                && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
                                     icmpInstRelated.insert(fromNodeInst);
                                     workListForICmpInstRelated.insert(fromNodeInst);
                                 }
@@ -385,7 +418,7 @@ bool Loops::runOnModule(Module &M) {
                             if (edge->isMustDependence() && 
                             edge->dataDepToString() == "RAW") {
                                 if (icmpInstRelated.count(toNodeInst) <= 0
-                                && ls->isIncluded(toNodeInst)) {
+                                && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
                                     icmpInstRelated.insert(toNodeInst);
                                     workListForICmpInstRelated.insert(toNodeInst);
                                 }
@@ -624,6 +657,8 @@ bool Loops::runOnModule(Module &M) {
         // }
 
     }
+
+
 
     // transform those loopTasks
     for (auto task : loopTasks) {
@@ -1050,3 +1085,10 @@ bool Loops::instHappensBefore(Instruction * inst, Instruction * final) {
     }
 }
 
+Constant * Loops::generateJoinFunc() {
+    LLVMContext& ctx = this->program->getContext();
+    Type * ty = Type::getInt32Ty(ctx);
+    FunctionType * joinFuncType = FunctionType::get(Type::getVoidTy(ctx), ty, false);
+    Constant * join = this->program->getOrInsertFunction("_Z4joinj", joinFuncType);
+    return join;
+}

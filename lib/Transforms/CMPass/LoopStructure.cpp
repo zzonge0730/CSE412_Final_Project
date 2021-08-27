@@ -255,3 +255,14 @@ bool LoopStructure::isLoopExitBlock(BasicBlock * bb) {
     return false;
 
 }
+
+bool LoopStructure::isInLoopLatch(Instruction * inst) {
+    for (auto BB : this->latchBBs) {
+        for (auto& I : *BB) {
+            if (inst == &I) {
+                return true;
+            }
+        }
+    }
+    return false;
+}

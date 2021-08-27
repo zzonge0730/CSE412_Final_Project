@@ -37,6 +37,7 @@ private:
     PDGAnalysis * pdgAnalysis;
     std::unordered_map<BasicBlock*, uint32_t> loopHeaderToLoopIndexMap;
 
+
     std::vector<Function*> * getModuleFunctionsReachableFrom(
         Module * M, Function * startingPoint
     );
@@ -63,7 +64,8 @@ private:
     std::vector<BasicBlock*>& loopExitBlocks);
 
     bool instHappensBefore(Instruction * inst, Instruction * final);
-    
+    Constant * generateJoinFunc();
+
 };
 
 #endif

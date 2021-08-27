@@ -501,7 +501,7 @@ void PDGAnalysis::iteratorInstForCall(PDG *pdg, Function &F, AliasAnalysis &AA, 
         //errs() << "iteratorInstForCall-481\n";
         //check load
         if (auto load = dyn_cast<LoadInst>(I)) {
-            errs() << "504: call: " << *call << ", load: " << *load << "\n";
+            // errs() << "504: call: " << *call << ", load: " << *load << "\n";
             addEdgeFromFunctionModRef(pdg, F, AA, call, load, true);
             continue;
         }
