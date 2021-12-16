@@ -306,6 +306,13 @@ void PDGAnalysis::constructEdgesFromControl(PDG *pdg, Module &M) {
 
 void PDGAnalysis::constructEdgesFromControlForFunction(PDG *pdg, Function &F) {
     assert(pdg != nullptr);
+    /*
+    * There is a control dependence from a basic block A to a basic block B iff
+    * 1) there is E such that E is a successor of A, and 
+    * 2) B post-dominates E, and
+    * 3) B doesn't strictly post-dominate A
+    */
+
     //errs() << "---PDGAnalysis--285\n";
     //fetch the post-dominator tree of the function
     //auto& PDT = getAnalysis<PostDominatorTree>();
@@ -344,8 +351,13 @@ void PDGAnalysis::constructEdgesFromControlForFunction(PDG *pdg, Function &F) {
                 //errs() << "---PDGAnalysis--313\n";
                 //check if B strictly post-dominates predBB
                 //if (postDomTree.properlyDominates(&B, predBB)) continue;
+                /*
+                * B strictly post-dominates predBB.
+                * Therefore, there is no control dependence from predBB to B
+                */
                 if (DT->properlyDominates(&B, predBB)) continue;
                 //errs() << "---PDGAnalysis--316\n";
+                //There is a control dependence from predBB to B
                 //add the control dependences
                 for (auto &I : B) {
                     auto edge = pdg->addEdge((Value*)controlTerminator, (Value*)&I);
