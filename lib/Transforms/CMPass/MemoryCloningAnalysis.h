@@ -66,7 +66,7 @@ private:
     };
     // std::unordered_set<std::unique_ptr<OverrideSet>> overrideSets;
     std::unordered_set<OverrideSet *> overrideSets;
-    bool identifyInitialStoringInstructions(DominatorSummary& ds);
+    bool identifyInitialStoringInstructions(LoopStructure * loop,  DominatorSummary& ds);
     bool areOverrideSetsFullyCoveringTheAllocationSpace(void) const;
     bool isOverrideSetFullyCoveringTheAllocationSpace(OverrideSet *overrideSet) const;
 
