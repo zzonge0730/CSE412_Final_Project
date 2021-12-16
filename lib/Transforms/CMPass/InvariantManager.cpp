@@ -56,6 +56,14 @@ InvariantManager::InvarianceChecker::InvarianceChecker(LoopStructure * loop, PDG
             continue;
         }
 
+        // memory allocators and deallocators cannot be invariants
+        if (auto callInst = dyn_cast<CallInst>(inst)) {
+            if (isAllocator(callInst) ||isDeallocator(callInst)) {
+                this->notInvariants.insert(inst);
+                continue;
+            }
+        }
+
         //since we iterate over data dependencies that are loop values
         //and a PHI may be comprised of constants, 
         //we must explicitly check that all PHI incoming values are equivalent
@@ -133,6 +141,12 @@ bool InvariantManager::InvarianceChecker::isEvolvingValue(Value * toValue, DGEdg
     }
 
     //the instruction is included in the loop
+
+    //memory allocators and deallocators cannot be invariants
+    if (auto callInst = dyn_cast<CallInst>(toInst)) {
+        if (isAllocator(callInst) || isDeallocator(callInst)) return true;
+    }
+
     //if the instruction is a memory dependence, the value may evolve
     if (dep->isMemoryDependence()) {
         return true;
