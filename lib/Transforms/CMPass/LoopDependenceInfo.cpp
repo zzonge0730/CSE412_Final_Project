@@ -28,11 +28,32 @@ LoopDependenceInfo::LoopDependenceInfo(PDG * pdg, Loop * loop, DominatorSummary&
     this->loopEnviroment = new LoopEnvironment(loopPDG, loopExitBlocks);
 
     //create the invariant manager
+    // this step identifies instructions that are loop invariants
     auto topLoop = this->loopSummary.getLoopNestingTreeRoot();
     this->invariantManager = new InvariantManager(topLoop, this->loopPDG);
 
+    //create the induction variable manager
+    //identifies IVs
+    //First, we need to compute the LoopDependenceGraph that doesn't include memory dependences
+    //Memory depdences don't matter for the IV detection
+    //Then, we compute the SCCDAG of this sub-LDG
+    //Next, we can identify IVs from this new SCCDAG
+
+    std::vector<Value *> loopInternals;
+    for (auto internalNode : loopPDG->getInternalNodePairs()) {
+        loopInternals.push_back(internalNode.first);
+    }
+    std::unordered_set<DGEdge<Value> *> memDeps{};
+    for (auto currentDep : loopPDG->getSortedDependences()) {
+        if (currentDep->isMemoryDependence()) {
+            memDeps.insert(currentDep);
+        }
+    }
+    auto loopDGWithoutMemoryDeps = loopPDG->createSubgraphFromValues(loopInternals, false, memDeps);
+    auto loopSCCDAGWithoutMemoryDeps = new SCCDAG(loopDGWithoutMemoryDeps);
+
     //calculate various attributes on SCCs
-    this->inductionVariables = new InductionVariableManager(this->loopSummary, *this->invariantManager, se, *loopSCCDAG, *loopEnviroment);
+    this->inductionVariables = new InductionVariableManager(this->loopSummary, *this->invariantManager, se, *loopSCCDAGWithoutMemoryDeps, *loopEnviroment);
     this->sccdagAttrs = new SCCDAGAttrs(enableFloatAsReal, pdg, loopSCCDAG, this->loopSummary, se, *this->inductionVariables, ds);
     this->domainSpaceAnalysis = new LoopIterationDomainSpaceAnalysis(this->loopSummary, *this->inductionVariables, se);
 
