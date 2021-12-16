@@ -81,6 +81,8 @@ private:
                 pdg->addEdge((Value*)instI, (Value*)instJ)->setMemMustType(true, true, dpType);
                 return;
         }
+
+        //TODO: add SVF alias analysis
         //check other alias analysis
         //check if svf is enabled
         // if (this->enableSVF) {

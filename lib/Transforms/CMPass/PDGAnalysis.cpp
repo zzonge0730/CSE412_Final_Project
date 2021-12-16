@@ -549,7 +549,7 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
             break;
     }
 
-    //check other alias analysis
+    //TODO: add SVF alias analysis
     // if (this->enableSVF) {
 
     // }
@@ -610,6 +610,9 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
         case AliasAnalysis::ModRef:
            break;
     }
+
+    //TODO: add SVF alias analysis
+
     //for softboundcets --- 1
     // bool specialRAW = false;
     // // errs() << "611: call: " << *call << ", NumOfArg: " << call->getNumArgOperands() <<"\n";
@@ -699,6 +702,8 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
             break;
 
     }
+
+    //TODO: add SVF alias analysis
 
     if (bv[0] && bv[1]) {
         return;
@@ -987,7 +992,7 @@ AliasResult PDGAnalysis::doTheyAlias (PDG *pdg, Function &F, AliasAnalysis &AA, 
             return AliasAnalysis::MustAlias;
     }
 
-    
+    //TODO: add SVF alias analysis
 
     return AliasAnalysis::MayAlias;
 }
