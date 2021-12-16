@@ -645,8 +645,28 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
     bool reverseModEdge = false;
     bool reverseModRefEdge = false;
 
-    //we cannot have memory dependences from a call to a deallocator(e.g., free).
-    if (isDeallocator(call)) return;
+    //no dependence between allocators
+    if (isAllocator(call) && isAllocator(otherCall) 
+    && !isReallocator(call) && !isReallocator(otherCall)) 
+        return;
+    //check if the call instructions are abount an allocator and a deallocator
+    CallInst * allocatorCall = nullptr;
+    CallInst * deallocatorCall = nullptr;
+    if (isAllocator(call)) allocatorCall = call;
+    if (isAllocator(otherCall)) allocatorCall = otherCall;
+    if (isDeallocator(call)) deallocatorCall = call;
+    if (isDeallocator(otherCall)) deallocatorCall = otherCall;
+    if (allocatorCall != nullptr && deallocatorCall != nullptr) {
+        // if one call is allocator , another is deallocator
+        // check if the pointer accessed by the deallocator alias with the pointer returned by the allocator
+        auto objectAllocated = getAllocatedObject(allocatorCall);
+        auto objectFreed = getFreedObject(deallocatorCall);
+        if (objectAllocated != nullptr && objectFreed != nullptr) {
+            auto aliasType = this->doTheyAlias(pdg, F, AA, objectAllocated, objectFreed);
+            if (aliasType == AliasAnalysis::NoAlias) return;
+        }
+
+    }
 
     //query the llvm alias analysis
     switch (AA.getModRefInfo(call, otherCall)) {
@@ -954,3 +974,20 @@ const std::unordered_set<std::string> PDGAnalysis::externalThreadSafeFunctions {
 
 
 };
+
+AliasResult PDGAnalysis::doTheyAlias (PDG *pdg, Function &F, AliasAnalysis &AA, Value * instI, Value * instJ) {
+    //query the llvm alias analysis
+    switch (AA.alias(instI, instJ)) {
+        case AliasAnalysis::NoAlias:
+            return AliasAnalysis::NoAlias;
+        case AliasAnalysis::PartialAlias:
+        case AliasAnalysis::MayAlias:
+            break;
+        case AliasAnalysis::MustAlias: 
+            return AliasAnalysis::MustAlias;
+    }
+
+    
+
+    return AliasAnalysis::MayAlias;
+}

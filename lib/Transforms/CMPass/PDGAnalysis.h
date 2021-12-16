@@ -59,6 +59,8 @@ private:
 
     bool isActualCode(CallInst *call);
 
+    AliasResult doTheyAlias (PDG *pdg, Function &F, AliasAnalysis &AA, Value * instI, Value * instJ);
+
     void addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, StoreInst *store, bool flag);
     void addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, LoadInst *load, bool flag);
     void addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, CallInst *otherCall);
