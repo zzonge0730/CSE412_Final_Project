@@ -4,6 +4,7 @@
 
 #include "SCCDAGAttrs.h"
 #include "LoopDependenceInfo.h"
+#include "llvm/IR/IntrinsicInst.h"
 
 class DOALLTask {
 public:
@@ -101,10 +102,12 @@ public:
     void setLDI(LoopDependenceInfo * LDI);
     void splitLoop();
     void setOldLoopBody(std::unordered_set<BasicBlock *> oldBBs);
-    void setICmpInstRelated(std::unordered_set<Instruction *> instSet);
+    // void setCmpInstRelated(std::unordered_set<Instruction *> instSet);
+    void setBrInstRelated(std::unordered_set<Instruction *> instSet);
     void setBitCastLiveInVarRelated(std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastMap);
     void setJoinFunc(Constant * joinF);
     void setJoinPoints(std::unordered_set<Instruction *> joinPoints);
+    void setDoNotParallelCodes(std::unordered_map<Instruction *, std::set<Instruction *>> codes);
 
 
 private:
@@ -137,7 +140,8 @@ private:
     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
     std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
     std::unordered_set<BasicBlock *> oldLoopBody;
-    std::unordered_set<Instruction *> icmpInstRelated;
+    // std::unordered_set<Instruction *> cmpInstRelated;
+    std::unordered_set<Instruction *> brInstRelated;
     std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastLiveInVarRelated;
     BasicBlock * newLoopBody;
 
@@ -161,12 +165,19 @@ private:
 
     bool instIsInLoopBody(Instruction * inst);
     bool instIsInAllInstsToOneCall(Instruction * inst);
-    bool instIsInICmpInstRelated(Instruction * inst);
+    // bool instIsInCmpInstRelated(Instruction * inst);
+    bool instIsInBrInstRelated(Instruction * inst);
+
     bool hasStoreInstInNewLoopBody(Value * liveIn);
     bool liveInNeedACMem(Value * liveIn);
     bool isLocalVarLiveIn(Value * liveIn);
+    bool usedByLLVMIntrinsic(Value * V);
+    bool phiCornerCase(Instruction * inst, BasicBlock * bb);
+    bool succIsPHIBB(BasicBlock * BB);  
+    bool isOriginalInst(Instruction * inst);
 
-    
+    std::unordered_map<Instruction *, std::set<Instruction *>> doNotParallelCodes;
+    bool isDoNotParallelCodes(Instruction * inst);
 };
 
 #endif

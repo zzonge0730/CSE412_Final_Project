@@ -1,18 +1,18 @@
-#include "Loops.h"
+#include "LoopsMovec.h"
 
-char Loops::ID = 0;
+char LoopsMovec::ID = 0;
 
-static RegisterPass<Loops> X("Loops", "Find and Get Loops in the program");
+static RegisterPass<LoopsMovec> X("LoopsMovec", "Find and Get Loops in the program for Movec");
 
-Loops::Loops() : ModulePass{ID} {
-
-}
-
-Loops::~Loops() {
+LoopsMovec::LoopsMovec() : ModulePass{ID} {
 
 }
 
-void Loops::getAnalysisUsage(AnalysisUsage &AU) const {
+LoopsMovec::~LoopsMovec() {
+
+}
+
+void LoopsMovec::getAnalysisUsage(AnalysisUsage &AU) const {
 
     AU.addRequired<PDGAnalysis>();
 
@@ -26,7 +26,7 @@ void Loops::getAnalysisUsage(AnalysisUsage &AU) const {
 
 }
 
-bool Loops::runOnModule(Module &M) {
+bool LoopsMovec::runOnModule(Module &M) {
 
     this->program = &M;
     this->pdgAnalysis = &getAnalysis<PDGAnalysis>();
@@ -126,7 +126,14 @@ bool Loops::runOnModule(Module &M) {
         for (auto loop : loopsToParallelize) {
             //check if we can parallelize the loop
             auto ls = loop->getLoopStructure();
+            auto lsF = ls->getFunction();
+            //if loop function is movec wrapper func or lib func , filter
+            StringRef nameF = lsF->getName();
+            if (nameF.startswith("_RV_") && !nameF.equals("_RV_main")) {
+                continue;
+            }
 
+            errs() << "Do Parallel In Fun: " << nameF << "\n";
             // errs() << "----loopStructure By sort----\n";
             // std::string str;
             // raw_string_ostream ros(str);
@@ -207,7 +214,7 @@ bool Loops::runOnModule(Module &M) {
                 for (BasicBlock& BB : *loopHeader->getParent()) {
                     for (Instruction& inst : BB) {
                         if (isa<ReturnInst>(&inst)) {    
-                            joinPoints.insert(&inst);
+                            joinPoints.insert(&(*(BB.getFirstInsertionPt())));
                         }
                     }
                 }
@@ -291,6 +298,7 @@ bool Loops::runOnModule(Module &M) {
                 for (auto pair : liveInInitVal) {
                     errs() << "liveIn: " << *pair.first << ", store init val: " << *pair.second << "\n";
                 }
+
                 // if (needVariableInitLiveInVars.size() != 0) {
                 //     delete task;
                 //     errs() << "this task we can not handle...\n";
@@ -342,6 +350,7 @@ bool Loops::runOnModule(Module &M) {
                 //need orderedBasicBlocks
                 // std::unordered_map<BasicBlock *, std::vector<BasicBlock *>> loopBodyBasicBlock;
                 
+                // is movec wrapper func, not movec lib function
                 std::unordered_set<Instruction *> customedFunRelatedCodeInLoop;
                 bool relatedFlag = false;
                 for (auto BB : ls->orderedBBs) {
@@ -351,22 +360,16 @@ bool Loops::runOnModule(Module &M) {
                             if (calledFunc == nullptr) continue; // !! could return null if the call is an indirect call through a function pointer
                             StringRef callName = calledFunc->getName();
                             // errs() << "call: " << callName << "\n";
-                            if (callName.startswith("__softboundcets_allocate_shadow_stack_space")) {
-                                relatedFlag = true;
-                            }
-                            if (callName.startswith("__softboundcets_deallocate_shadow_stack_space")) {
-                                customedFunRelatedCodeInLoop.insert(&I);
-                                relatedFlag = false;
-                            }
-                            if (relatedFlag) {
+                            if (callName.startswith("_RV_") && !isTheMovecLibraryFunction(calledFunc) && !callName.startswith("_RV_print")) {
                                 customedFunRelatedCodeInLoop.insert(&I);
                             }
+
                         }
                     }
                 }
-                // for (auto inst : customedFunRelatedCodeInLoop) {
-                //     errs() << "codeFunRelatedInst: " << *inst << "\n";
-                // }
+                for (auto inst : customedFunRelatedCodeInLoop) {
+                    errs() << "codeFunRelatedInst: " << *inst << "\n";
+                }
 
                 std::unordered_set<Instruction *> workListForCustFunCode(customedFunRelatedCodeInLoop.begin(), customedFunRelatedCodeInLoop.end());
                 while (!workListForCustFunCode.empty()) {
@@ -399,19 +402,28 @@ bool Loops::runOnModule(Module &M) {
                         }
                     }
                 }
-                // for (auto inst : customedFunRelatedCodeInLoop) {
-                //     errs() << "codeFunRelatedInst111: " << *inst << "\n";
-                // }
+                for (auto inst : customedFunRelatedCodeInLoop) {
+                    errs() << "codeFunRelatedInst111: " << *inst << "\n";
+                }
                 errs() << "----customedFunRelatedCodeInLoop----\n";
                 // cal safeCheckCallInst, safeCheckInstsInLoopBody, allInstsToOneCallInstInLoopBody, 
                 // std::unordered_set<Instruction *> cmpInstRelated;
                 std::unordered_set<Instruction *> brInstRelated;
+
+                // std::srand(std::time(0)); //seed
+                
                 for (auto body : loopBody) {
                     // errs() << "loopBody: " << *body << "\n";
+                    // bool flag = false;
+                    // int coin = std::rand() % 100;
+                    // if (coin >=0 && coin <=49 ) flag = true;
                     for (auto& I : *body) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-                            if (IsSafeCheckCall(CI)) {
+                            
+                            if (IsSafeCheckCallForMovec(CI)) {
+                                // if (flag) 
                                 safecheckCallInst.push_back(&I);
+                                
                                 //SafeCheckSet.insert(&I);
                             }
                         }
@@ -425,6 +437,11 @@ bool Loops::runOnModule(Module &M) {
                         }
                     }
                 }
+
+                
+
+
+
                 // std::unordered_set<Instruction *> workListForCmpInstRelated(cmpInstRelated.begin(), cmpInstRelated.end());
                 std::unordered_set<Instruction *> workListForBrInstRelated(brInstRelated.begin(), brInstRelated.end());
                 // while (!workListForCmpInstRelated.empty()) {
@@ -478,6 +495,7 @@ bool Loops::runOnModule(Module &M) {
                 // for (auto inst : brInstRelated) {
                 //     errs() << "brInstRelate: " << *inst << "\n";
                 // }
+                
                 errs() << "^^^^^brInstRelate^^^^^\n";
                 for (auto callInst : safecheckCallInst) {
                     std::set<Instruction *> safeCheckInsts;
@@ -607,6 +625,15 @@ bool Loops::runOnModule(Module &M) {
                             }
                         }
                     }
+                    if (pair.second.size() == 0) {
+                        for (auto inst : customedFunRelatedCodeInLoop) {
+                            if (inst == pair.first) {
+                                errs() << "removed...\n";
+                                removed = true;
+                            }
+                        }
+                    }
+
                     if (!removed) {
                         // errs() << "-428-\n";
                         // safeCheckInstsInLoopBody.erase(pair.first);
@@ -639,12 +666,12 @@ bool Loops::runOnModule(Module &M) {
                         needVariableInitLiveInVars.push_back(pair.first);
                     }
                 }
-
-                if (needVariableInitLiveInVars.size() != 0) {
-                    delete task;
-                    errs() << "this task we can not handle...\n";
-                    continue;
-                }
+                
+                // if (needVariableInitLiveInVars.size() != 0) {
+                //     delete task;
+                //     errs() << "this task we can not handle, because of unknown memory load...\n";
+                //     continue;
+                // }
 
                 // std::unordered_map<Instruction *, std::set<Instruction *>> notToParallelCodes;
                 for (auto pair : allInstsToOneCallInstInLoopBody) {
@@ -676,7 +703,13 @@ bool Loops::runOnModule(Module &M) {
                     //         }
                     //     }
                     // }
-
+                    if (pair.second.size() == 0) {
+                        for (auto inst : customedFunRelatedCodeInLoop) {
+                            if (inst == pair.first) {
+                                removed = true;
+                            }
+                        }
+                    }
 
                     if (!removed) {
                         // errs() << "-441-\n";
@@ -686,6 +719,66 @@ bool Loops::runOnModule(Module &M) {
                 }
                 
                 errs() << "^^^^^customedFunRelatedCodeInLoop^^^^^\n";
+
+                //TODO: filter corner cases which are not able to be parallelized
+                
+                // if there is no safecheck call inst , don't do that 
+                if (allInstsToOneCallInstInLoopBodyFinal.size() == 0 || 
+                safeCheckInstsInLoopBodyFinal.size() == 0) {
+                    delete task;
+                    errs() << "this task we can not handle, because of non safe call inst...\n";
+                    continue;
+                }
+
+                // if there are some thread safe lib function in loop meta-operation codes, don't do that
+                bool filterFlag = false;
+                for (auto pair : allInstsToOneCallInstInLoopBodyFinal) {
+                    for (auto inst : pair.second) {
+                        if (CallInst * call = dyn_cast<CallInst>(inst)) {
+                            Function * calledFunc = call->getCalledFunction();
+                            if (calledFunc == nullptr) continue; // function pointer
+                            StringRef calledFuncName = calledFunc->getName();
+                            if (PDGAnalysis::isTheLibraryFunctionThreadSafe(calledFunc) ||
+                            calledFuncName.startswith("_RV_sscanf_") || calledFuncName.startswith("_RV_printf_") || 
+                            calledFuncName.startswith("_RV_fprintf")) {
+                                filterFlag = true;
+                                errs() << "this task we can not handle, because of thread safe func-741...\n";
+                                break;
+                            }
+                        }
+                    }
+
+                }
+
+                for (auto inst : brInstRelated) {
+                    if (CallInst * brCall = dyn_cast<CallInst>(inst)) {
+                        Function * calledFunc = brCall->getCalledFunction();
+                        
+                        if (calledFunc == nullptr) continue; // function pointer
+                        StringRef calledFuncName = calledFunc->getName();
+                        if (PDGAnalysis::isTheLibraryFunctionThreadSafe(calledFunc) ||
+                            calledFuncName.startswith("_RV_sscanf_") || calledFuncName.startswith("_RV_printf_") || 
+                            calledFuncName.startswith("_RV_fprintf")) {
+                            filterFlag = true;
+                            errs() << "this task we can not handle, because of thread safe func-755...\n";
+                            break;
+                        }
+                    }
+
+                    for (auto in : customedFunRelatedCodeInLoop) {
+                        if (in == inst) {
+                            filterFlag = true;
+                            errs() << "this task we can not handle, because of custom func-770...\n";
+                            break;
+                        }
+                    }
+
+                }
+
+                if (filterFlag) {
+                    delete task;
+                    continue;
+                }
 
                 // get safeCheckInstsInLoopBody (Call + bitcast + load alloca...etc)
                 // get allInstsToOneCallInLoopBody (Call + bitcast + load alloca... + original code(load,store,etc))
@@ -764,182 +857,6 @@ bool Loops::runOnModule(Module &M) {
 
     }
 
-    // std::vector<LoopFreeTask *> loopFreeTasks;
-    // uint32_t id = 0;
-    // //TODO: loop free opt
-    // // get non loop basic blocks
-    // for (Function& F : *this->program) {
-    //     if (F.isDeclaration() || F.isIntrinsic() || F.empty()) continue;
-    //     if (F.getName().startswith("_spawn_loop_func_") || F.getName().startswith("_loop_func_") ) continue;
-    //     //get each functionPDG
-    //     PDG * functionPDG = new PDG(F);
-
-    //     std::vector<Instruction *> safeCheckCallInstInNonLoopBody;
-    //     //safecheck - safecheckRelatedCode - 
-    //     //safechecks - Loc[xx, xx, xx]
-    //     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInNonLoopBody;
-    //     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckCallInstJoinPoints;
-    //     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsMoveRange;
-    //     for (BasicBlock& BB : F) {
-    //         if (allLoopBasicBlocks.count(&BB) > 0) continue;
-    //         // determine each safecheck 
-    //         for (Instruction& I : BB) {
-    //             if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-    //                 if (IsSafeCheckCallForLoopFree(CI)) {
-    //                     safeCheckCallInstInNonLoopBody.push_back(&I);
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     //get safecheck related codes , joinpoints and locs
-    //     for (auto callInst : safeCheckCallInstInNonLoopBody) {
-    //         std::set<Instruction *> safeCheckRelatedInsts;
-    //         std::set<Instruction *> joinpoints;
-    //         for (auto subedge : functionPDG->getEdges()) {
-    //             auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-    //             auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-    //             if (cast<Instruction>(toNodeSubT) == callInst) {
-    //                 if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-    //                     if (safeCheckRelatedInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && 
-    //                     callInst->getParent() == cast<Instruction>(fromNodeSubT)->getParent()) {
-    //                         safeCheckRelatedInsts.insert(cast<Instruction>(fromNodeSubT));
-    //                     }
-    //                 }
-    //             }
-
-    //             if (cast<Instruction>(fromNodeSubT) == callInst &&
-    //             subedge->dataDepToString() == "RAW") {
-    //                 if (fromNodeSubT != toNodeSubT) {
-    //                     joinpoints.insert(cast<Instruction>(toNodeSubT));
-    //                 }
-    //             }
-    //         }
-            
-    //         safeCheckInstsInNonLoopBody[callInst] = safeCheckRelatedInsts;
-    //         safeCheckCallInstJoinPoints[callInst] = joinpoints;
-
-    //         //joinpoints means the farthest location, if it is null, the join point is the last instruction of a function
-    //         //find the the forward most location
-    //         std::set<Instruction *> locs; // if it is null, the forward most is the entry point (should judge whether is a call or bitcast inst)
-    //         for (auto inst : safeCheckRelatedInsts) {
-                
-    //             for (auto subedge : functionPDG->getEdges()) {
-    //                 auto from = cast<Instruction>(subedge->getOutgoingNode()->getT());
-    //                 auto to = cast<Instruction>(subedge->getIncomingNode()->getT());
-
-    //                 if (to == inst) {
-    //                     if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW" &&
-    //                     from->getParent() == inst->getParent()) {
-    //                         locs.insert(from);
-    //                     }
-    //                 }
-    //             }
-
-    //             if (isa<CallInst>(inst)) { //maybe __softboundcets_load_lock_shadow_stack or other like
-    //                 locs.insert(inst);
-    //             }
-
-    //         }
-    //         safeCheckInstsMoveRange[callInst] = locs;
-    //     }
-
-    //     //create the loop free task, and set some info
-    //     for (BasicBlock& BB : F) {
-    //         if (allLoopBasicBlocks.count(&BB) > 0) continue;
-
-    //         Insturction * taskJoinPoint = nullptr;
-    //         std::unordered_set<Instruction * > safeCheckCodeForOneTask;
-
-    //         for (Instruction& I : BB) {
-    //             if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-    //                 if (IsSafeCheckCallForLoopFree(CI)) {
-    //                     if (taskJoinPoint == nullptr) {
-    //                         std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-    //                         if (joinpoints.size() == 0) {
-    //                             taskJoinPoint = BB.getTerminator();
-    //                         } else {
-    //                             bool flag = false;
-    //                             for (auto joinp : joinpoints) {
-    //                                 if (joinp->getParent() == &BB) {
-    //                                     taskJoinPoint = joinp;
-    //                                     flag = true;
-    //                                 }
-    //                             }
-    //                             if (!flag) taskJoinPoint = BB.getTerminator();
-    //                         }
-    //                         safeCheckCodeForOneTask.insert(&I);
-    //                     } else {
-    //                         if (instHappensBefore(&I, taskJoinPoint)) {
-    //                             std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-    //                             if (joinpoints.size() == 0) {
-    //                                 taskJoinPoint = BB.getTerminator();
-    //                             } else {
-    //                                 bool flag = false;
-    //                                 for (auto joinp : joinpoints) {
-    //                                     if (joinp->getParent() == &BB) {
-    //                                         if (!instHappensBefore(joinp, taskJoinPoint)) {
-    //                                             taskJoinPoint = joinp;
-    //                                         }
-    //                                         flag = true;
-    //                                     }
-    //                                 }
-    //                                 if (!flag) {
-    //                                     taskJoinPoint = BB.getTerminator();
-    //                                 }
-    //                             }
-    //                             safeCheckCodeForOneTask.insert(&I);
-    //                         } else {
-    //                             //a new task
-    //                             LoopFreeTask *loopFreeTask = new LoopFreeTask(id++, this->program);
-    //                             loopFreeTask->setSafeCheckCodes(safeCheckCodeForOneTask);
-    //                             loopFreeTask->setInfo( safeCheckInstsInNonLoopBody,
-    //                             safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
-    //                             loopFreeTask->setJoinPoint(taskJoinPoint);
-    //                             loopFreeTask->setTargetBB(&BB);
-        //             loopFreeTask->setJoinFunc(joinFunc);
-    //                             loopFreeTasks.push_back(loopFreeTask);
-    //                             safeCheckCodeForOneTask.clear();
-
-    //                             std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-    //                             if (joinpoints.size() == 0) {
-    //                                 taskJoinPoint = BB.getTerminator();
-    //                             } else {
-    //                                 bool flag = false;
-    //                                 for (auto joinp : joinpoints) {
-    //                                     if (joinp->getParent() == &BB) {
-    //                                         if (!instHappensBefore(joinp, taskJoinPoint)) {
-    //                                             taskJoinPoint = joinp;
-    //                                         }
-    //                                         flag = true;
-    //                                     }
-    //                                 }
-    //                                 if (!flag) {
-    //                                     taskJoinPoint = BB.getTerminator();
-    //                                 }
-    //                             }
-    //                             safeCheckCodeForOneTask.insert(&I);
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-
-    //         if (safeCheckCodeForOneTask.size() != 0) {
-    //             //a new task
-    //             LoopFreeTask *loopFreeTask = new LoopFreeTask(id++, this->program);
-    //             loopFreeTask->setSafeCheckCodesForOneTask(safeCheckCodeForOneTask);
-    //             loopFreeTask->setInfo(safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
-    //             loopFreeTask->setTargetBB(&BB);
-    //             loopFreeTask->setJoinPoint(BB.getTerminator());
-    //             loopFreeTask->setJoinFunc(joinFunc);
-    //             loopFreeTasks.push_back(loopFreeTask);
-    //         }
-
-    //     }
-
-    // }
 
 
     // transform those loopTasks
@@ -966,15 +883,17 @@ bool Loops::runOnModule(Module &M) {
 
     errs() << "Final module: \n";
     errs() << *this->program << "\n";
-    errs() << "Loops::runOnModule...before return\n";
+    errs() << "LoopsMovec::runOnModule...before return\n";
     return false;
 }
 
-Function * Loops::getEntryFunction(void) const {
-    return this->program->getFunction("softboundcets_pseudo_main");//"main"
+Function * LoopsMovec::getEntryFunction(void) const {
+    return this->program->getFunction("main");//"main"
+    // _RV_main or main for MoveC
+    // softboundcets_pseudo_main for softboundcets
 }
 
-std::vector<LoopStructure *> * Loops::getLoopStructures(void) {
+std::vector<LoopStructure *> * LoopsMovec::getLoopStructures(void) {
     auto allLoops = new std::vector<LoopStructure *> ();
 
     auto mainFunction = this->getEntryFunction();
@@ -1016,7 +935,7 @@ std::vector<LoopStructure *> * Loops::getLoopStructures(void) {
     delete functions;
     return allLoops;
 }
-std::vector<LoopStructure *> * Loops::getLoopStructures(Function * func) {
+std::vector<LoopStructure *> * LoopsMovec::getLoopStructures(Function * func) {
     //check if the function has loops
     auto allLoops = new std::vector<LoopStructure *>();
     //---zyy, may be should check fun is a declration or not
@@ -1039,7 +958,7 @@ std::vector<LoopStructure *> * Loops::getLoopStructures(Function * func) {
     return allLoops;
 }
 
-std::vector<Function *> * Loops::getModuleFunctionsReachableFrom(Module * M, Function * startingPoint) {
+std::vector<Function *> * LoopsMovec::getModuleFunctionsReachableFrom(Module * M, Function * startingPoint) {
     auto functions = new std::vector<Function*>();
     auto &callGraph = getAnalysis<CallGraph>();
 
@@ -1084,11 +1003,11 @@ std::vector<Function *> * Loops::getModuleFunctionsReachableFrom(Module * M, Fun
     return functions;
 }
 
-PDG * Loops::getFunctionDependenceGraph(Function * func) {
+PDG * LoopsMovec::getFunctionDependenceGraph(Function * func) {
     return this->pdgAnalysis->getFunctionPDG(*func);
 }
 
-StayConnectedNestedLoopForest * Loops::organizeLoopsInTheirNestingForest(std::vector<LoopStructure *> const & loops) {
+StayConnectedNestedLoopForest * LoopsMovec::organizeLoopsInTheirNestingForest(std::vector<LoopStructure *> const & loops) {
     //compute the dominators
     std::unordered_map<Function *, DominatorSummary *> doms{};
     for (auto loop : loops) {
@@ -1111,7 +1030,7 @@ StayConnectedNestedLoopForest * Loops::organizeLoopsInTheirNestingForest(std::ve
 }
 
 
-DominatorSummary * Loops::getDominators(Function * f) {
+DominatorSummary * LoopsMovec::getDominators(Function * f) {
     auto& DT = getAnalysis<DominatorTree>(*f);
     auto& PDT = getAnalysis<PostDominatorTree>(*f);
 
@@ -1119,7 +1038,7 @@ DominatorSummary * Loops::getDominators(Function * f) {
     return ds;
 }
 
-std::vector<LoopDependenceInfo *> Loops::selectTheOrderOfLoopsToParallelize(StayConnectedNestedLoopForestNode * tree) {
+std::vector<LoopDependenceInfo *> LoopsMovec::selectTheOrderOfLoopsToParallelize(StayConnectedNestedLoopForestNode * tree) {
 
     std::vector<LoopDependenceInfo *> selectedLoops{};
 
@@ -1248,7 +1167,7 @@ std::vector<LoopDependenceInfo *> Loops::selectTheOrderOfLoopsToParallelize(Stay
     return selectedLoops;
 }
 
-bool Loops::parallelizeLoop(LoopDependenceInfo * LDI, DOALL& doall) {
+bool LoopsMovec::parallelizeLoop(LoopDependenceInfo * LDI, DOALL& doall) {
     assert(LDI != nullptr);
 
     //fetch the loop header
@@ -1309,7 +1228,7 @@ bool Loops::parallelizeLoop(LoopDependenceInfo * LDI, DOALL& doall) {
     return true;
 }
 
-void Loops::linkTransformedLoopToOriginalFunction(
+void LoopsMovec::linkTransformedLoopToOriginalFunction(
     Module * module,
     BasicBlock * originalPreHeader,
     BasicBlock * startOfParallelizeLoopInOriginalFunc,
@@ -1392,7 +1311,7 @@ void Loops::linkTransformedLoopToOriginalFunction(
 
 }
 
-bool Loops::instHappensBefore(Instruction * inst, Instruction * final) {
+bool LoopsMovec::instHappensBefore(Instruction * inst, Instruction * final) {
     Function * parentFunc = final->getParent()->getParent();
     bool flag = false;
     for (BasicBlock& BB : *parentFunc) {
@@ -1411,10 +1330,214 @@ bool Loops::instHappensBefore(Instruction * inst, Instruction * final) {
     }
 }
 
-Constant * Loops::generateJoinFunc() {
+Constant * LoopsMovec::generateJoinFunc() {
     LLVMContext& ctx = this->program->getContext();
     Type * ty = Type::getInt32Ty(ctx);
     FunctionType * joinFuncType = FunctionType::get(Type::getVoidTy(ctx), ty, false);
     Constant * join = this->program->getOrInsertFunction("_Z4joinj", joinFuncType);
     return join;
+}
+
+
+const std::unordered_set<std::string> LoopsMovec::movecLibFunction {
+    /*Print the runtime error count.*/
+    "_RV_print_error_count",
+    /*===----------------------------- stat_node ------------------------------===*/
+    "_RV_stat_node_create",
+    "_RV_stat_node_dec",
+    /*===----------------------------- pmd ------------------------------------===*/
+    "_RV_pmd_create",
+    "_RV_pmd_free_null_ptr",
+    "_RV_pmd_get_base",
+    "_RV_pmd_get_bound",
+    "_RV_pmd_get_snda",
+    "_RV_pmd_get_stat",
+    "_RV_pmd_print",
+    "_RV_pmd_set",
+    "_RV_pmd_set_ret",
+    "_RV_pmd_set_null",
+    "_RV_pmd_cp_pmd",
+    "_RV_pmd_cp_pmd_ret",
+    "_RV_pmd_cp_fmd_pmd",
+    /*===----------------------------- fmd_pmd --------------------------------===*/
+    "_RV_fmd_pmd_get_base",
+    "_RV_fmd_pmd_get_bound",
+    /*===----------------------------- utilities ------------------------------===*/
+    "_RV_sstrlen",
+    /*===----------------------------- pmd_tbl --------------------------------===*/
+    "_RV_pmd_tbl_create",
+    "_RV_pmd_tbl_lookup",
+    "_RV_pmd_tbl_print",
+    "_RV_pmd_tbl_update_sa",
+    "_RV_pmd_tbl_update_sa_ret",
+    "_RV_pmd_tbl_update_pmd",
+    "_RV_pmd_tbl_update_pmd_ret",
+    "_RV_pmd_tbl_update_fpmd",
+    "_RV_pmd_tbl_update_ptr",
+    "_RV_pmd_tbl_update_ptr_ret",
+    "_RV_pmd_tbl_remove",
+    "_RV_pmd_tbl_remove_pa",
+    "_RV_pmd_var_remove_pa",
+    "_RV_pmd_tbl_update_argv",
+    "_RV_pmd_var_update_argv",
+    "_RV_pmd_tbl_remove_argv",
+    "_RV_pmd_var_remove_argv",
+    "_RV_pmd_tbl_update_envp",
+    "_RV_pmd_var_update_envp",
+    "_RV_pmd_tbl_remove_envp",
+    "_RV_pmd_var_remove_envp",
+    /*===----------------------------- fmd_tbl --------------------------------===*/
+    "_RV_fmd_tbl_create",
+    "_RV_fmd_tbl_lookup_fpmd",
+    "_RV_fmd_tbl_print",
+    "_RV_fmd_tbl_update_pmd",
+    "_RV_fmd_tbl_remove",
+    /*===----------------------------- check ----------------------------------===*/
+    "_RV_check_dpv",
+    "_RV_check_dpv_ss",
+    "_RV_check_dpfv",
+    "_RV_check_dpc",
+    "_RV_check_dpc_ss",
+    "_RV_check_dpfc",
+    /*********************************** ctype.h **********************************/
+    "_RV___ctype_b_loc",
+    /***************************** getopt.h ********************************/
+    "_RV_getopt_long",
+    /******************************* locale.h *************************************/
+    "_RV_setlocale",
+    "_RV_localeconv",
+    /******************************* math.h ***************************************/
+    "_RV_frexp",
+    "_RV_modf",
+    /***************************** pwd.h ********************************/
+    "_RV_getpwnam",
+    "_RV_getpwuid",
+    "_RV_getpwent",
+    /******************************* setjmp.h *************************************/
+    "_RV_setjmp",
+    "_RV_longjmp",
+    /******************************* signal.h *************************************/
+    "_RV_signal",
+    /****************************** sys/stat.h ************************************/
+    "_RV_fstat",
+    /******************************* stdio.h **************************************/
+    "_RV_fclose",
+    "_RV_clearerr",
+    "_RV_feof",
+    "_RV_ferror",
+    "_RV_fflush",
+    "_RV_fgetpos",
+    "_RV_fopen",
+    "_RV_fdopen",
+    "_RV_freopen",
+    "_RV_fileno",
+    "_RV_fread",
+    "_RV_fseek",
+    "_RV_fsetpos",
+    "_RV_ftell",
+    "_RV_fwrite",
+    "_RV_remove",
+    "_RV_rename",
+    "_RV_rewind",
+    "_RV_setbuf",
+    "_RV_setvbuf",
+    "_RV_tmpfile",
+    "_RV_tmpnam",
+    "_RV_vfprintf",
+    "_RV_vprintf",
+    "_RV_vsprintf",
+    "_RV_fgetc",
+    "_RV_fgets",
+    "_RV_fputc",
+    "_RV_fputs",
+    "_RV__IO_getc",
+    "_RV_gets",
+    "_RV__IO_putc",
+    "_RV_puts",
+    "_RV_ungetc",
+    "_RV_perror",
+    /******************************* stdlib.h *************************************/
+    "_RV_atof",
+    "_RV_atoi",
+    "_RV_atol",
+    "_RV_strtod",
+    "_RV_strtol",
+    "_RV_strtoul",
+    "_RV_calloc",
+    "_RV_free",
+    "_RV_malloc",
+    "_RV_realloc",
+    "_RV_atexit",
+    "_RV_getenv",
+    "_RV_system",
+    "_RV_mblen",
+    "_RV_mbstowcs",
+    "_RV_mbtowc",
+    "_RV_wcstombs",
+    "_RV_wctomb",
+    "_RV_bsearch",
+    "_RV_qsort",
+    /***************************** string.h ********************************/
+    "_RV_memchr",
+    "_RV_memcmp",
+    "_RV_memcpy",
+    "_RV_memccpy",
+    "_RV_memmove",
+    "_RV_memset",
+    "_RV_strcat",
+    "_RV_strncat",
+    "_RV_strchr",
+    "_RV_strcmp",
+    "_RV_strncmp",
+    "_RV_strcoll",
+    "_RV_strcpy",
+    "_RV_strncpy",
+    "_RV_strcspn",
+    "_RV_strerror",
+    "_RV_strlen",
+    "_RV_strpbrk",
+    "_RV_strrchr",
+    "_RV_strspn",
+    "_RV_strstr",
+    "_RV_strtok",
+    "_RV_strxfrm",
+    "_RV_bzero",
+    "_RV_bcopy",
+    /***************************** time.h ********************************/
+    "_RV_asctime",
+    "_RV_ctime",
+    "_RV_gmtime",
+    "_RV_localtime",
+    "_RV_mktime",
+    "_RV_strftime",
+    "_RV_time",
+    "_RV___errno_location",
+    /***************************** sys/times.h ********************************/
+    "_RV_times",
+    /***************************** unistd.h ********************************/
+    "_RV_read",
+    "_RV_write",
+    "_RV_unlink",
+    "_RV_getcwd",
+    "_RV_getopt",
+    /********************************* utime.h ************************************/
+    "_RV_utime",
+    /******************************* call by ptr **********************************/
+    "_RV_call_wrapper_by_ptr",
+    "_RV_has_wrapper",
+    "_RV_global_init_code",
+    "_RV_global_clear_code",
+
+
+    "_RV_fmd_pmd_set_null",
+    "_RV_fmd_pmd_dc_snda",
+    "_RV_trie_remove_pmd",
+    "_RV_hashtbl_insert_fmd"
+};
+
+bool LoopsMovec::isTheMovecLibraryFunction(Function * libF) {
+    if (LoopsMovec::movecLibFunction.count(libF->getName())) {
+        return true;
+    }
+    return false;
 }

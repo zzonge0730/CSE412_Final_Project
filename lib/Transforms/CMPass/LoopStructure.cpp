@@ -37,7 +37,7 @@ LoopStructure::LoopStructure(Loop* loop, LoopStructure* parentLoop) : parent{par
     SmallVector<BasicBlock *, 10> exits;
     loop->getExitBlocks(exits);
     this->exitBlocks = std::vector<BasicBlock *>(exits.begin(), exits.end());
-
+    errs() << "exitBlocksSize: " << this->exitBlocks.size() << "\n";
     SmallVector<std::pair<const BasicBlock *, const BasicBlock *>, 10> ExitEdges;
     loop->getExitEdges(ExitEdges);
     this->exitEdges = std::vector<std::pair<const BasicBlock *, const BasicBlock *>>(ExitEdges.begin(), ExitEdges.end());
@@ -240,9 +240,15 @@ void LoopStructure::calculateLoopBody(void) {
     std::set_difference(this->orderedBBs.begin(), this->orderedBBs.end(), 
                         prologue.begin(), prologue.end(),
     std::inserter(this->bodyBBs, this->bodyBBs.begin()));
+    
 }
 
 std::unordered_set<BasicBlock *> LoopStructure::getLoopBody(void) {
+    //for while loop, loop header, loop body and loop latch are all in the loop body
+    if (this->bodyBBs.size() == 0) {
+        //is a while loop
+        return this->BBs;
+    }
     return this->bodyBBs;
 }
 

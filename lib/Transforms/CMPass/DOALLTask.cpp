@@ -679,18 +679,148 @@ std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) 
     // for (auto arg : args) {
     //     errs() << "final arg: " << *arg << "\n";
     // }
-    for (int i = 0 ; i < args.size(); i++) {
-        errs() << "final arg: " << *args[i] << "\n";
-    }
+    // for (int i = 0 ; i < args.size(); i++) {
+    //     errs() << "final arg: " << *args[i] << "\n";
+    // }
 
     return args;
 }
 
 void DOALLTask::eraseSafeCheckCodes() {
+
+    //adjust data flows in original loops for Movec tool
+    for (auto p : this->safeCheckInstsInLoopBody) {
+        if (p.second.size() == 0) continue;
+        if (CallInst * CI = dyn_cast<CallInst>(p.first)) {
+            StringRef funcName = CI->getCalledFunction()->getName();
+            Instruction * from = nullptr;
+            ConstantInt * subscript = nullptr;
+            if (funcName.equals("_RV_check_dpv_ss") ||
+                funcName.equals("_RV_check_dpc_ss")) {
+                for (auto i : p.second) {
+                    if (i->getType() == Type::getInt64Ty(this->M->getContext())) {
+                        from = i;
+                        break;
+                    }
+                }
+
+                //get constant value
+                if (!from) {
+                    //_RV_check_dpv_ss getOp(2)
+                    if (funcName.equals("_RV_check_dpv_ss")) {
+                        subscript = dyn_cast<ConstantInt>(CI->getArgOperand(2));
+                        
+                    } else if (funcName.equals("_RV_check_dpc_ss")) {
+                        //_RV_check_dpc_ss getOp(3)
+                        subscript = dyn_cast<ConstantInt>(CI->getArgOperand(3));
+                       
+                    }
+                    
+                }
+
+            } else if (funcName.equals("_RV_check_dpv")) {
+                for (auto inst : p.second) {
+                    if ((inst->getType() ==  PointerType::getUnqual(Type::getInt8Ty(this->M->getContext()))) && (isa<BitCastInst>(inst) || isa<LoadInst>(inst) || isa<GetElementPtrInst>(inst))) {
+                        from = inst;
+                        break;
+                    }
+                }
+
+            }
+
+            if (from) {
+                errs() << "719 from: " << *from << "\n";
+                //find the use of CI and change dataflow
+                errs() << "718 CI: " << *CI << "\n";
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    errs() << "instUse: " << *instUse << "\n";
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                        auto opV = (*opIt).get();
+
+                        if (auto opI = dyn_cast<Instruction>(opV) ) {
+                            // errs() << "--710--" << *opI << "\n";
+                            if (opI == CI) {
+                                (*opIt).set(from);
+                            }
+                            
+                        }
+                    }
+                }
+            } else {
+                if (subscript) {
+                    errs() << "755 CI: " << *CI << "\n";
+                    errs() << "756 subscript: " << *subscript << "\n";
+                    std::unordered_set<Instruction *> cachedInstUse;
+                    for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                        if (cachedInstUse.size() >= 1) break;
+                        Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                        if (instUse == nullptr) continue;
+                        if (cachedInstUse.count(instUse) > 0) continue;
+                        cachedInstUse.insert(instUse);
+                        errs() << "instUse: " << *instUse << "\n";
+                        for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                            auto opV = (*opIt).get();
+
+                            if (auto opI = dyn_cast<Instruction>(opV) ) {
+                                // errs() << "--710--" << *opI << "\n";
+                                if (opI == CI) {
+                                    (*opIt).set(subscript);
+                                }
+                                
+                            }
+                        }
+                    }
+                }
+            }
+
+
+        }
+    }
+
+
     //the code in safeCheckInstsInLoopBody should be erase
     std::unordered_set<Instruction*> toErased;
     for (auto pair : this->safeCheckInstsInLoopBody) {
+        // if call ret value is used by _RV_pmd_cp_pmd_ret, do not erase
+        bool usedByFlag = false;
+        if (CallInst * ci = dyn_cast<CallInst>(pair.first)) {
+            for (auto useIt = ci->use_begin(); useIt != ci->use_end(); ++useIt) {
+                if (CallInst * useCall = dyn_cast<CallInst>(*useIt)) {
+                    StringRef useCallName = useCall->getCalledFunction()->getName();
+                    if (useCallName.equals("_RV_pmd_cp_pmd_ret") || useCallName.equals("_RV_memcpy")) {
+                        usedByFlag = true;
+                    }
+                }
+            }
+        }
+        if (usedByFlag) continue;
+        
+
         for (auto inst : pair.second) {
+            
+            if (isOriginalInst(inst)) continue;
+            // for movec
+            if (CallInst * CI = dyn_cast<CallInst>(pair.first)) {
+                StringRef funcName = CI->getCalledFunction()->getName();
+                if (funcName.equals("_RV_check_dpv_ss") ||
+                    funcName.equals("_RV_check_dpc_ss")) {
+                    if (inst->getType() == Type::getInt64Ty(this->M->getContext()) || 
+                    isa<LoadInst>(inst)) {
+                        //  errs() << "--751--\n";
+                        continue;
+                    }
+                } else if (funcName.equals("_RV_check_dpv")) {
+                    // errs() << "--755--\n";
+                    continue;
+                }
+            }
+
+
+
             toErased.insert(inst);
         }
         toErased.insert(pair.first);
@@ -700,12 +830,39 @@ void DOALLTask::eraseSafeCheckCodes() {
         inst->eraseFromParent();
     }
 
-    errs() << "Final module: \n";
-    errs() << *this->M << "\n";
+    // errs() << "Final module: \n";
+    // errs() << *this->M << "\n";
+}
+
+bool DOALLTask::isOriginalInst(Instruction * inst) {
+    if (isa<GetElementPtrInst>(inst)) return true;
+    if (usedByLLVMIntrinsic(inst)) return true;
+    if (isa<LoadInst>(inst)) {
+        Value * val = cast<LoadInst>(inst)->getPointerOperand();
+        std::string valName = val->getName();
+        // errs() << "714Name: " << valName << "\n";
+        if (valName.find("base.load") == std::string::npos
+        && valName.find("bound.load") == std::string::npos
+        && valName.find("key.load") == std::string::npos
+        && valName.find("lock.load") == std::string::npos) { // if find one
+            return true;
+        }
+    }
+
+    return false;
+
 }
 
 void DOALLTask::splitLoop() {
     auto loopStructure = this->LDI->getLoopStructure();
+
+    errs() << "----loopStructure of a task----\n";
+    std::string str;
+    raw_string_ostream ros(str);
+    loopStructure->print(ros);
+    ros.flush();
+    errs() << str << "\n";
+
     auto& ctx = this->M->getContext();
     Type * voidStarTy = PointerType::getUnqual(Type::getInt8Ty(ctx));
     
@@ -736,41 +893,14 @@ void DOALLTask::splitLoop() {
     }
     this->entryBlock = BasicBlock::Create(ctx, "entry", newLoopFunc);
 
-    
+    errs() << "SplitLoop 740" << "\n";
     //prepare var in entry block
     std::unordered_map<Value *, Value *> liveInForNewLiveIn;
     std::unordered_map<Value *, std::pair<Value *, Value *>> newBase_BoundForNewAlloca;
     for (auto liveIn : this->liveInVars) {
         if (this->liveInNeedACMem(liveIn)) {
-            if (this->liveInInitValue[liveIn]) {
-                Value * ac = new AllocaInst(this->liveInInitValue[liveIn]->getType(), "zyac_", this->entryBlock);
-                new StoreInst(this->liveInInitValue[liveIn], ac, this->entryBlock);
-
-                liveInForNewLiveIn[liveIn] = ac;
-
-                AllocaInst * allocaInst = cast<AllocaInst>(ac);
-                unsigned num_operands = allocaInst->getNumOperands();
-                PointerType* ptr_type = PointerType::get(allocaInst->getAllocatedType(), 0);
-                Type * ty1 = ptr_type;
-                BitCastInst * ptr = new BitCastInst(ac, ty1, "zyacptr_", this->entryBlock);
-                //p base
-                Value * ptr_base = new BitCastInst(ptr, voidStarTy, "zybitcast", this->entryBlock);
-                //p bound
-                Value * int_bound;
-                if (num_operands == 0) {
-                    if (this->M->getPointerSize() == llvm::Module::Pointer64) {
-                        int_bound = ConstantInt::get(Type::getInt64Ty(ctx), 1, false);
-                    } else {
-                        int_bound = ConstantInt::get(Type::getInt32Ty(ctx), 1, false);
-                    }
-                } else {
-                    int_bound = allocaInst->getOperand(0);
-                }
-                GetElementPtrInst * gep = GetElementPtrInst::Create(ptr, int_bound, "zytmp", this->entryBlock);
-                Value * bound_ptr = gep;
-                Value * ptr_bound = new BitCastInst(bound_ptr, voidStarTy, "zybitcast", this->entryBlock);
-                newBase_BoundForNewAlloca[ac] = std::make_pair(ptr_base, ptr_bound);
-            } else {
+            if (!this->liveInInitValue[liveIn]) {
+                //init value is null
                 // p
                 // errs() << "---548 " << *liveIn << "\n";
                 if (AllocaInst * acInst = dyn_cast<AllocaInst>(liveIn)) {
@@ -804,9 +934,93 @@ void DOALLTask::splitLoop() {
                     newBase_BoundForNewAlloca[castArg] = std::make_pair(ptr_base, ptr_bound);
                     // errs() << "---573\n";
                 }
+            } else if (isa<Constant>(this->liveInInitValue[liveIn])) {
+                //init value is constant value
+                Value * ac = new AllocaInst(this->liveInInitValue[liveIn]->getType(), "zyac_", this->entryBlock);
+                new StoreInst(this->liveInInitValue[liveIn], ac, this->entryBlock);
+
+                liveInForNewLiveIn[liveIn] = ac;
+
+                AllocaInst * allocaInst = cast<AllocaInst>(ac);
+                unsigned num_operands = allocaInst->getNumOperands();
+                PointerType* ptr_type = PointerType::get(allocaInst->getAllocatedType(), 0);
+                Type * ty1 = ptr_type;
+                BitCastInst * ptr = new BitCastInst(ac, ty1, "zyacptr_", this->entryBlock);
+                //p base
+                Value * ptr_base = new BitCastInst(ptr, voidStarTy, "zybitcast", this->entryBlock);
+                //p bound
+                Value * int_bound;
+                if (num_operands == 0) {
+                    if (this->M->getPointerSize() == llvm::Module::Pointer64) {
+                        int_bound = ConstantInt::get(Type::getInt64Ty(ctx), 1, false);
+                    } else {
+                        int_bound = ConstantInt::get(Type::getInt32Ty(ctx), 1, false);
+                    }
+                } else {
+                    int_bound = allocaInst->getOperand(0);
+                }
+                GetElementPtrInst * gep = GetElementPtrInst::Create(ptr, int_bound, "zytmp", this->entryBlock);
+                Value * bound_ptr = gep;
+                Value * ptr_bound = new BitCastInst(bound_ptr, voidStarTy, "zybitcast", this->entryBlock);
+                newBase_BoundForNewAlloca[ac] = std::make_pair(ptr_base, ptr_bound);
+
+            } else { 
+                //init value is variable
+                // Value * ac = new AllocaInst(this->liveInInitValue[liveIn]->getType(), "zac_", this->entryBlock);
+                if (AllocaInst * acInst = dyn_cast<AllocaInst>(liveIn)) {
+                    // errs() << "acInst: " << *acInst << "\n";
+                    Argument * arg = nullptr;
+                    for (auto argIt = newLoopFunc->arg_begin(); argIt != newLoopFunc->arg_end(); ++argIt) {
+                        if (argIt->getName() == liveIn->getName() && argIt->getType() == liveIn->getType()) {
+                            
+                            arg = argIt;
+                            break;
+                        } 
+                    }
+                    
+                    errs() << "--823---\n";
+
+                    if (arg == nullptr) errs() << "Error...arg is nullptr\n";
+                    Value * ac = new AllocaInst(acInst->getAllocatedType(), "zac_", this->entryBlock);
+
+                    LoadInst * load = new LoadInst(arg, "zyl_", this->entryBlock);
+                    
+                    errs() << "--825---\n";
+                    new StoreInst(load, ac, this->entryBlock);
+
+                    liveInForNewLiveIn[liveIn] = ac;
+
+                    AllocaInst * allocaInst = cast<AllocaInst>(ac);
+                    unsigned num_operands = allocaInst->getNumOperands();
+                    PointerType* ptr_type = PointerType::get(allocaInst->getAllocatedType(), 0);
+                    Type * ty1 = ptr_type;
+                    BitCastInst * ptr = new BitCastInst(ac, ty1, "zacptr_", this->entryBlock);
+                    //p base
+                    Value * ptr_base = new BitCastInst(ptr, voidStarTy, "zbitcast", this->entryBlock);
+                    //p bound
+                    Value * int_bound;
+                    if (num_operands == 0) {
+                        if (this->M->getPointerSize() == llvm::Module::Pointer64) {
+                            int_bound = ConstantInt::get(Type::getInt64Ty(ctx), 1, false);
+                        } else {
+                            int_bound = ConstantInt::get(Type::getInt32Ty(ctx), 1, false);
+                        }
+                    } else {
+                        int_bound = allocaInst->getOperand(0);
+                    }
+                    GetElementPtrInst * gep = GetElementPtrInst::Create(ptr, int_bound, "ztmp", this->entryBlock);
+                    Value * bound_ptr = gep;
+                    Value * ptr_bound = new BitCastInst(bound_ptr, voidStarTy, "zbitcast", this->entryBlock);
+                    newBase_BoundForNewAlloca[ac] = std::make_pair(ptr_base, ptr_bound);
+
+                    
+                }
+
+
             }
         }
     }
+    errs() << "SplitLoop 811" << "\n";
     IRBuilder<> loopPreHeader(this->entryBlock);
     // create bitcast inst for localLiveIn var in the entry block
     for (auto liveIn : this->liveInVars) {
@@ -839,9 +1053,15 @@ void DOALLTask::splitLoop() {
             loopPreHeader.Insert(bcInst);
             this->liveInClones[liveIn] = bcInst; 
 
+        } else if (this->liveInNeedACMem(liveIn)) {// needACMem and load variable init
+            Value * argForNew;
+            argForNew = liveInForNewLiveIn[liveIn];
+            auto bcInst = new BitCastInst{argForNew, liveIn->getType(), "", this->entryBlock};
+            loopPreHeader.Insert(bcInst);
+            this->liveInClones[liveIn] = bcInst; 
         }
     }
-
+    errs() << "SplitLoop 845" << "\n";
     int ix = 0;
     for (auto argIt = newLoopFunc->arg_begin(); argIt != newLoopFunc->arg_end(); ++argIt, ++ix) {
         //alloca memory for those liveInVars which are needed bitcast related
@@ -873,6 +1093,7 @@ void DOALLTask::splitLoop() {
         // } else {
 
         // }
+        if (this->liveInNeedACMem(nonLocalLiveIn[ix])) continue;
         auto bcInst = new BitCastInst{&*argIt, nonLocalLiveIn[ix]->getType(), "", this->entryBlock};
         loopPreHeader.Insert(bcInst);
         this->liveInClones[nonLocalLiveIn[ix]] = bcInst; 
@@ -881,20 +1102,22 @@ void DOALLTask::splitLoop() {
     std::unordered_map<BasicBlock *, BasicBlock *> bbMap{};
     std::set<Instruction *> instAdded{};
 
-    // errs() << "SplitLoop 701 is: " << *newLoopFunc << "\n";
+    errs() << "SplitLoop 701" << "\n";
 
 
-    for (auto &BB : loopStructure->getBasicBlocks()) {
+    for (auto BB : loopStructure->getBasicBlocks()) {
         std::string label = BB->getName();
         auto cloneBB = BasicBlock::Create(ctx, label, newLoopFunc);
         bbMap[BB] = cloneBB;
         IRBuilder<> builder(cloneBB);
         for (auto& I : *BB) {
-            if (isa<BranchInst>(I)) continue;
+            if (isa<BranchInst>(&I)) continue;
+
+            // if (isDoNotParallelCodes(&I) && (!instIsInBrInstRelated(&I))) continue; 
 
             if (true) { 
                 if ((!instIsInLoopBody(&I)) /*outer most loop latch & header*/ 
-                || (instIsInLoopBody(&I) && (instIsInAllInstsToOneCall(&I) || instIsInICmpInstRelated(&I)))) {
+                || (instIsInLoopBody(&I) && (instIsInAllInstsToOneCall(&I) || instIsInBrInstRelated(&I) || phiCornerCase(&I, BB) || succIsPHIBB(BB)))) {
                     auto cloneInst = builder.Insert(I.clone());
                     instAdded.insert(cloneInst);
                     // instMap[&I] = cloneInst;
@@ -932,28 +1155,51 @@ void DOALLTask::splitLoop() {
     * Duplicate all branch instructions (with correct successors).
     *   Cloned branches are not added to instMap because they don't produce values
     */
-    // errs() << "SplitLoop 750 is: " << *newLoopFunc << "\n";
+    errs() << "SplitLoop 750" << "\n";
 
-    for (auto& BB : loopStructure->getBasicBlocks()) {
+    for (auto BB : loopStructure->getBasicBlocks()) {
+        // errs() << "BBBB: " << *BB << "\n";
         IRBuilder<> builder(bbMap.at(BB));
+        // errs() << "SplitLoop 751" << "\n";
         auto terminator = BB->getTerminator();
+        // errs() << "SplitLoop 752" << "\n";
         auto cloneTerminator = builder.Insert(terminator->clone());
+        // errs() << "SplitLoop 753" << "\n";
         instAdded.insert(cloneTerminator);
+        // errs() << "SplitLoop 754" << "\n";
         assert(isa<BranchInst>(terminator) && isa<BranchInst>(cloneTerminator));
         auto branch = cast<BranchInst>(terminator);
+        // errs() << "SplitLoop 755" << "\n";
         auto cloneBranch = cast<BranchInst>(cloneTerminator);
+        // errs() << "SplitLoop 756" << "\n";
         this->instructionClones[branch] = cloneBranch;
+        // errs() << "SplitLoop 757" << "\n";
+        // errs() << "brSuccSize: " << branch->getNumSuccessors() << "\n";
+        // errs() << "cloneBrSuccSize: " << cloneBranch->getNumSuccessors() << "\n";
         for (unsigned idx = 0; idx < branch->getNumSuccessors(); idx++) {
             auto oldBB = branch->getSuccessor(idx);
+            // errs() << "oldBB: " << *oldBB << "\n";
+            // errs() << "SplitLoop 758" << "\n";
             auto newBB = bbMap.at(oldBB);
+            // errs() << "SplitLoop 759" << "\n";
             // if oldBB is a loopExitBlock
             if (loopStructure->isLoopExitBlock(oldBB)) {
+                // errs() << "SplitLoop 75591" << "\n";
                 newBB = BasicBlock::Create(ctx, "exit", newLoopFunc);
+                // errs() << "SplitLoop 7510" << "\n";
                 ReturnInst::Create(ctx, nullptr, newBB);
+                // errs() << "SplitLoop 7511" << "\n";
             }
+            // errs() << "SplitLoop 75592" << "\n";
+            // errs() << "newBB: " << *newBB << "\n";
+            // if (newBB == nullptr) errs() << "newBB is nullptr\n";
+            // if (cloneBranch == nullptr) errs() << "cloneBranch is nullptr, " << "branch is " << *branch << "\n";
+            // errs() << "idx: " << idx <<"\n";
             cloneBranch->setSuccessor(idx, newBB);
+            // errs() << "SplitLoop 7512" << "\n";
         }
     }
+    errs() << "SplitLoop 959" << "\n";
 
     auto newLoopHeader = bbMap.at(loopStructure->getHeader());
     auto newPreHeaderBranch = BranchInst::Create(newLoopHeader, this->entryBlock);
@@ -1153,8 +1399,8 @@ void DOALLTask::splitLoop() {
         CallInst::Create(this->joinFunc, id, "", point);
     }
 
-    errs() << "Transform module: \n";
-    errs() << *this->M << "\n";
+    // errs() << "Transform module: \n";
+    // errs() << *this->M << "\n";
 }
 
 void DOALLTask::setLDI(LoopDependenceInfo * LDI) {
@@ -1165,8 +1411,12 @@ void DOALLTask::setOldLoopBody(std::unordered_set<BasicBlock *> oldBBs) {
     this->oldLoopBody = oldBBs;
 }
 
-void DOALLTask::setICmpInstRelated(std::unordered_set<Instruction *> instSet) {
-    this->icmpInstRelated = instSet;
+// void DOALLTask::setCmpInstRelated(std::unordered_set<Instruction *> instSet) {
+//     this->cmpInstRelated = instSet;
+// }
+
+void DOALLTask::setBrInstRelated(std::unordered_set<Instruction *> instSet) {
+    this->brInstRelated = instSet;
 }
 
 bool DOALLTask::instIsInLoopBody(Instruction * inst) {
@@ -1181,7 +1431,9 @@ bool DOALLTask::instIsInLoopBody(Instruction * inst) {
 }
 bool DOALLTask::instIsInAllInstsToOneCall(Instruction * inst) {
     for (auto pair : this->allInstsToOneCallInstInLoopBody) {
+        
         for (auto I : pair.second) {
+            
             if (I == inst) {
                 return true;
             }
@@ -1194,8 +1446,15 @@ bool DOALLTask::instIsInAllInstsToOneCall(Instruction * inst) {
     return false;
 }
 
-bool DOALLTask::instIsInICmpInstRelated(Instruction * inst) {
-    if (this->icmpInstRelated.count(inst) > 0) {
+// bool DOALLTask::instIsInCmpInstRelated(Instruction * inst) {
+//     if (this->cmpInstRelated.count(inst) > 0) {
+//         return true;
+//     }
+//     return false;
+// }
+
+bool DOALLTask::instIsInBrInstRelated(Instruction * inst) {
+    if (this->brInstRelated.count(inst) > 0) {
         return true;
     }
     return false;
@@ -1242,7 +1501,7 @@ bool DOALLTask::liveInNeedACMem(Value * liveIn) {
 }
 
 bool DOALLTask::isLocalVarLiveIn(Value * liveIn) {
-    if (this->liveInInitValue.count(liveIn) > 0) {
+    if (this->liveInInitValue.count(liveIn) > 0 && (!this->liveInInitValue[liveIn] || isa<Constant>(this->liveInInitValue[liveIn]))) {
         return true;
     }
 
@@ -1253,5 +1512,61 @@ bool DOALLTask::isLocalVarLiveIn(Value * liveIn) {
             }
         }
     }
+    return false;
+}
+
+bool DOALLTask::usedByLLVMIntrinsic(Value * V) {
+    for (auto useIt = V->use_begin(); useIt != V->use_end(); ++useIt) {
+        Instruction * inst = dyn_cast<Instruction>(*useIt);
+        if (isa<IntrinsicInst>(inst)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool DOALLTask::phiCornerCase(Instruction * inst, BasicBlock * bb) {
+    if (isa<PHINode>(inst) && bb->size() == 2) {
+        return true;
+    }
+
+    return false;
+}
+
+bool DOALLTask::succIsPHIBB(BasicBlock * BB) {
+    bool hasSuccPHIBB = false;
+    auto terminator = BB->getTerminator();
+    auto branch = cast<BranchInst>(terminator);
+    for (unsigned idx = 0; idx < branch->getNumSuccessors(); idx++) {
+        auto succBB = branch->getSuccessor(idx);
+        Instruction& firstInst = succBB->front();
+        if (isa<PHINode>(&firstInst)) {
+            hasSuccPHIBB = true;
+        }
+    }
+
+    return hasSuccPHIBB;
+}
+
+void DOALLTask::setDoNotParallelCodes(std::unordered_map<Instruction *, std::set<Instruction *>> codes) {
+    this->doNotParallelCodes = codes;
+}
+
+
+bool DOALLTask::isDoNotParallelCodes(Instruction * inst) {
+    for (auto pair : this->doNotParallelCodes) {
+        
+        for (auto I : pair.second) {
+            
+            if (I == inst) {
+                return true;
+            }
+        }
+        if (pair.first == inst) {
+            return true;
+        }
+    }
+
     return false;
 }

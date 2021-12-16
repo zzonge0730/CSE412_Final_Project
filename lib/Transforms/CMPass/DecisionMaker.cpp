@@ -64,14 +64,14 @@ bool DecisionMaker::runOnModule(Module &M) {
         ++CGI;
     }
 
-    errs() << "-----print safe check group----\n";
-    for (auto groupPair : this->safeCheckToBeMergedGroup) {
-        errs() << "---vvvv---direction: " << groupPair.second << "\n";
+    // errs() << "-----print safe check group----\n";
+    // for (auto groupPair : this->safeCheckToBeMergedGroup) {
+    //     errs() << "---vvvv---direction: " << groupPair.second << "\n";
 
-        for (auto group : groupPair.first) {
-            errs() << "~~CallInst: " << *group << "\n";
-        }
-    }
+    //     for (auto group : groupPair.first) {
+    //         errs() << "~~CallInst: " << *group << "\n";
+    //     }
+    // }
 
     errs() << "-----print all join points------\n";
     
@@ -212,103 +212,104 @@ void DecisionMaker::processSCCForJoinPoints(PDG * pdg, CallGraphSCC &SCC) {
             uint32_t downUpCornerCase = 0; // flag = downUpCornerCase << 2 + direction; decode , direction = xx & 0x0000 0003, cornerCase = (flag >> 2 );
             for (Instruction &I : BB) {
                 if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-                    if (IsSafeCheckCall(CI)) {
+                    // if (IsSafeCheckCall(CI)) {
+                    if (IsSafeCheckCallForMovec(CI)) {
                         //use pdg to get the corresponding join point
                         std::set<Instruction*> joinpoints = findAllJoinPoints(pdg, CI, *func);
                         allJoinPoints.emplace_back(CI, joinpoints);
                         errs() << "Decision::CI is: " << *CI << "\n";
-                        if (lastCallInst == nullptr) {
-                            // safeCheckGroup.insert(CI);
-                            safeCheckGroup.push_back(CI);
-                        } else {
-                            errs() << "Decision::lastCallInst is: " << *lastCallInst << "\n";
-                            uint32_t newDirection = getDirection(pdg, *func, lastCallInst, CI); // dependence analysis
-                            errs() << "DecisionMaker::direction: " << direction << ", newDirection: " << newDirection << ", safeCheckGroupSize: " << safeCheckGroup.size() << "\n";
-                            uint32_t betweenCost = getSafeCheckBetweenSafeChecktCost(*func, lastCallInst, CI);
-                            uint64_t safeCheckCostLast = getSafeCheckCost(lastCallInst);
-                            uint64_t safeCheckCostCur = getSafeCheckCost(CI);
-                            if (direction != 2) { // 0 1 3
-                                if (newDirection == direction) { // 0-0, 1-1, 3-3
-                                    if (newDirection != 3) {//0-0, 1-1
-                                        if (true /*merge safecheck is profitable*/) {
-                                            // safeCheckGroup.insert(CI);
-                                            safeCheckGroup.push_back(CI); 
-                                            continue;
-                                        }
-                                    } else { //3-3
-                                        safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
-                                        safeCheckGroup.clear();
-                                        // safeCheckGroup.insert(CI);
-                                        safeCheckGroup.push_back(CI);
-                                    }
+                        // if (lastCallInst == nullptr) {
+                        //     // safeCheckGroup.insert(CI);
+                        //     safeCheckGroup.push_back(CI);
+                        // } else {
+                        //     errs() << "Decision::lastCallInst is: " << *lastCallInst << "\n";
+                        //     uint32_t newDirection = getDirection(pdg, *func, lastCallInst, CI); // dependence analysis
+                        //     errs() << "DecisionMaker::direction: " << direction << ", newDirection: " << newDirection << ", safeCheckGroupSize: " << safeCheckGroup.size() << "\n";
+                        //     uint32_t betweenCost = getSafeCheckBetweenSafeChecktCost(*func, lastCallInst, CI);
+                        //     uint64_t safeCheckCostLast = getSafeCheckCost(lastCallInst);
+                        //     uint64_t safeCheckCostCur = getSafeCheckCost(CI);
+                        //     if (direction != 2) { // 0 1 3
+                        //         if (newDirection == direction) { // 0-0, 1-1, 3-3
+                        //             if (newDirection != 3) {//0-0, 1-1
+                        //                 if (true /*merge safecheck is profitable*/) {
+                        //                     // safeCheckGroup.insert(CI);
+                        //                     safeCheckGroup.push_back(CI); 
+                        //                     continue;
+                        //                 }
+                        //             } else { //3-3
+                        //                 safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
+                        //                 safeCheckGroup.clear();
+                        //                 // safeCheckGroup.insert(CI);
+                        //                 safeCheckGroup.push_back(CI);
+                        //             }
 
-                                } else { // newDirection != direction 0-1, 1-0, 0-3,3-0, 1-3,3-1
-                                    //may be more aggressive approach
-                                    if (newDirection == 3) {//3-0, 3-1
+                        //         } else { // newDirection != direction 0-1, 1-0, 0-3,3-0, 1-3,3-1
+                        //             //may be more aggressive approach
+                        //             if (newDirection == 3) {//3-0, 3-1
                                         
-                                        safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
-                                        safeCheckGroup.clear();
-                                        // safeCheckGroup.insert(CI);
-                                        safeCheckGroup.push_back(CI);
-                                        direction = newDirection;
-                                        downUpCornerCase = 0;
-                                    } else if (newDirection == 0) { // 0-3, 0-1
-                                        if (direction == 3) {
-                                            // safeCheckGroup.insert(CI);
-                                            safeCheckGroup.push_back(CI);
-                                            direction = newDirection;
-                                            continue;
-                                        } else if (direction == 1) { //special case
-                                            downUpCornerCase = safeCheckGroup.size();
-                                            // safeCheckGroup.insert(CI);
-                                            safeCheckGroup.push_back(CI);
-                                            direction = newDirection;
-                                            continue;
-                                        }
-                                    } else if (newDirection == 1) { // 1-3, 1-0
-                                        if (direction == 3) {
-                                            // safeCheckGroup.insert(CI);
-                                            safeCheckGroup.push_back(CI);
-                                            direction = newDirection;
-                                            continue;
-                                        } else if (direction == 0) {
-                                            safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
-                                            safeCheckGroup.clear();
-                                            // safeCheckGroup.insert(CI);
-                                            safeCheckGroup.push_back(CI);
-                                            direction = newDirection;
-                                            downUpCornerCase = 0;
-                                        }
-                                    }
+                        //                 safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
+                        //                 safeCheckGroup.clear();
+                        //                 // safeCheckGroup.insert(CI);
+                        //                 safeCheckGroup.push_back(CI);
+                        //                 direction = newDirection;
+                        //                 downUpCornerCase = 0;
+                        //             } else if (newDirection == 0) { // 0-3, 0-1
+                        //                 if (direction == 3) {
+                        //                     // safeCheckGroup.insert(CI);
+                        //                     safeCheckGroup.push_back(CI);
+                        //                     direction = newDirection;
+                        //                     continue;
+                        //                 } else if (direction == 1) { //special case
+                        //                     downUpCornerCase = safeCheckGroup.size();
+                        //                     // safeCheckGroup.insert(CI);
+                        //                     safeCheckGroup.push_back(CI);
+                        //                     direction = newDirection;
+                        //                     continue;
+                        //                 }
+                        //             } else if (newDirection == 1) { // 1-3, 1-0
+                        //                 if (direction == 3) {
+                        //                     // safeCheckGroup.insert(CI);
+                        //                     safeCheckGroup.push_back(CI);
+                        //                     direction = newDirection;
+                        //                     continue;
+                        //                 } else if (direction == 0) {
+                        //                     safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
+                        //                     safeCheckGroup.clear();
+                        //                     // safeCheckGroup.insert(CI);
+                        //                     safeCheckGroup.push_back(CI);
+                        //                     direction = newDirection;
+                        //                     downUpCornerCase = 0;
+                        //                 }
+                        //             }
 
 
-                                }
-                            } else { // direction == 2
-                                if (newDirection == 3) {
-                                    safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + newDirection));
-                                    safeCheckGroup.clear();
-                                    // safeCheckGroup.insert(CI);
-                                    safeCheckGroup.push_back(CI);
-                                    direction = 2;
-                                } else {
-                                    direction = newDirection;
-                                    // safeCheckGroup.insert(CI);
-                                    safeCheckGroup.push_back(CI);
-                                }
+                        //         }
+                        //     } else { // direction == 2
+                        //         if (newDirection == 3) {
+                        //             safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + newDirection));
+                        //             safeCheckGroup.clear();
+                        //             // safeCheckGroup.insert(CI);
+                        //             safeCheckGroup.push_back(CI);
+                        //             direction = 2;
+                        //         } else {
+                        //             direction = newDirection;
+                        //             // safeCheckGroup.insert(CI);
+                        //             safeCheckGroup.push_back(CI);
+                        //         }
                                 
-                            }
+                        //     }
 
-                        }
+                        // }
 
 
-                        lastCallInst = CI;
+                        // lastCallInst = CI;
                     }
                 }
             }
-            if (safeCheckGroup.size() != 0) {
-                if (downUpCornerCase == 0) safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
-                else safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
-            }
+            // if (safeCheckGroup.size() != 0) {
+            //     if (downUpCornerCase == 0) safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, direction));
+            //     else safeCheckToBeMergedGroup.push_back(make_pair(safeCheckGroup, downUpCornerCase << 2 + direction));
+            // }
             
         }
 

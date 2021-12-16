@@ -21,9 +21,17 @@ void LoopCarriedDependencies::setLoopCarriedDependencies (
 }
 
 LoopStructure * LoopCarriedDependencies::getLoopOfLCD(const LoopSummary &LIS, const DominatorSummary &DS, DGEdge<Value> *edge) {
+  //fetch the loop
+  auto topLoop = LIS.getLoopNestingTreeRoot();
+  assert(topLoop != nullptr);
+  auto topLoopHeader = topLoop->getHeader();
+  auto topLoopHeaderBranch = topLoopHeader->getTerminator();
+  
+  //fetch the instructions involved in the dependence
   auto producer = edge->getOutgoingT();
   auto consumer = edge->getIncomingT();
 
+  //only dependences between instruction can be loop-carried
   if (!isa<Instruction>(producer)) {
     return nullptr ;
   }
@@ -31,10 +39,15 @@ LoopStructure * LoopCarriedDependencies::getLoopOfLCD(const LoopSummary &LIS, co
     return nullptr ;
   }
 
+  // fetch the instructions involved in the dependence
   auto producerI = dyn_cast<Instruction>(producer);
   auto consumerI = dyn_cast<Instruction>(consumer);
+
+  //fetch the innermost loops that contain the two instructions
   auto producerLoop = LIS.getLoop(*producerI);
   auto consumerLoop = LIS.getLoop(*consumerI);
+
+  //if either of the instruction does not belong a loop, then the dependence cannot be loop-carried
   if (!producerLoop || !consumerLoop) {
     return nullptr ;
   }
@@ -48,13 +61,23 @@ LoopStructure * LoopCarriedDependencies::getLoopOfLCD(const LoopSummary &LIS, co
     /*
      * If a memory-less data dependence producer cannot reach the header of the loop without reaching the consumer, then this is a false positive match.
      */
+    // check if the dependence is data and via variable
     if (!edge->isMemoryDependence() && edge->isDataDependence()) {
+      // the data dependence is variable based
+
       auto producerB = producerI->getParent();
       auto consumerB = consumerI->getParent();
       bool mustProducerReachConsumerBeforeHeader = !canBasicBlockReachHeaderBeforeOther(*consumerLoop, producerB, consumerB);
 
       if (mustProducerReachConsumerBeforeHeader) {
         return nullptr ;
+      }
+
+      if (DS.DT.dominates(consumerI, producerI)
+      && DS.DT.dominates(topLoopHeaderBranch, consumerI)) {
+        if (auto phiConsumer = dyn_cast<PHINode>(consumerI)) {
+          return nullptr;
+        }
       }
     }
     return consumerLoop;

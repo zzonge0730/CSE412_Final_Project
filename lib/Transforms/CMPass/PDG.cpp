@@ -6,17 +6,35 @@
 using namespace llvm;
 
 PDG::PDG(Module &M) {
+    // int count = 0;
+    // Function* entryFunc = nullptr;
     for (auto &F : M) {
         if (F.isDeclaration()) continue;
+        //filter movec lib function  and movec wrapperfunction
+        // StringRef funcName = F.getName();
+        // if (funcName.startswith("_RV_") && (!funcName.equals("_RV_main"))) {
+        //     continue;
+        // }
         addNodesOf(F);
+        // if (count == 0) entryFunc = &F;
+        // count++;
     }
     //set the etnry node
     //"main" for asan and ubsan
     //"softboundcets_pseudo_main" for softboundcets
-    //TODO: need more flexiable impl
-    auto mainF = M.getFunction("softboundcets_pseudo_main");
-    assert(mainF != nullptr);
+    //"_RV_main" for movec
+    // auto mainF = M.getFunction("softboundcets_pseudo_main");
+    auto mainF = M.getFunction("main");
 
+
+    assert(mainF != nullptr);
+    // if (mainF == nullptr) {
+    //     errs() << "mainF is null, name: " << entryFunc->getName() << "\n";
+    //     this->setEntryPointAt(*entryFunc);
+    // } else {
+    //     errs() << "mainF is not null...\n";
+    //     this->setEntryPointAt(*mainF);
+    // }
     this->setEntryPointAt(*mainF);
     for (auto edge : this->getEdges()) {
         assert(!edge->isLoopCarriedDependence() && "Flag was already set");

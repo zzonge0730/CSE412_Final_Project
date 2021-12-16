@@ -43,6 +43,30 @@ bool IsSafeCheckCall(CallInst *CI){
     return false;
 }
 
+bool IsSafeCheckCallForMovec(CallInst *CI) {
+    if (CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if (callName.equals("_RV_pmd_tbl_lookup") ||
+            callName.equals("_RV_fmd_tbl_lookup_fpmd") ||
+            callName.equals("_RV_check_dpv") ||
+            callName.equals("_RV_check_dpv_ss") ||
+            callName.equals("_RV_check_dpfv") ||
+            callName.equals("_RV_check_dpc") ||
+            callName.equals("_RV_check_dpc_ss") ||
+            callName.equals("_RV_check_dpfc") ||
+            callName.equals("_RV_fmd_tbl_update_pmd") ||
+            callName.equals("_RV_pmd_tbl_update_pmd") ||
+            callName.equals("_RV_pmd_tbl_update_ptr") ||
+            callName.equals("_RV_pmd_tbl_update_fpmd") ||
+            callName.equals("_RV_pmd_tbl_update_sa")
+            ) {
+                return true;
+        }
+    }
+
+    return false;
+}
+
 bool IsSafeCheckFun(StringRef funcName) {
     if(funcName.startswith("__softboundcets") || 
         //funcName.startswith("") ||
@@ -78,6 +102,25 @@ bool IsSafeCheckFun(StringRef funcName) {
     return false;
 }
 
+
+bool IsSafeCheckCallForLoopFree(CallInst *CI) {
+    if (CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if (
+            callName.equals("__softboundcets_metadata_load") ||
+            callName.equals("__softboundcets_temporal_load_dereference_check") ||
+            callName.equals("__softboundcets_spatial_load_dereference_check") ||
+            callName.equals("__softboundcets_temporal_store_dereference_check") ||
+            callName.equals("__softboundcets_spatial_store_dereference_check") ||
+            callName.equals("__softboundcets_metadata_store")
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool IsEmittingInst(Instruction &I) {
     return !(isa<BitCastInst>(I) || isa<PHINode>(I));
 }
@@ -106,7 +149,10 @@ bool isAllocator(CallInst * callInst) {
     calleeName == "realloc" ||
     calleeName == "softboundcets_malloc" ||
     calleeName == "softboundcets_calloc" ||
-    calleeName == "softboundcets_realloc") {
+    calleeName == "softboundcets_realloc" ||
+    calleeName == "_RV_malloc" ||
+    calleeName == "_RV_calloc" ||
+    calleeName == "_RV_realloc") {
         return true;
     }
 
@@ -123,11 +169,141 @@ bool isDeallocator(CallInst * callInst) {
 
     auto calleeName = callee->getName();
     if (calleeName == "free" || 
-    calleeName == "softboundcets_free") {
+    calleeName == "softboundcets_free" ||
+    calleeName == "_RV_free") {
         return true;
     }
 
     return false;
+}
+
+bool isReallocator (CallInst * callInst) {
+    if (callInst == nullptr) return false;
+
+    auto callee = callInst->getCalledFunction();
+    if (callee == nullptr) return false;
+
+    if (!callee->empty()) return false;
+
+    auto calleeName = callee->getName();
+    if (calleeName == "realloc" || 
+    calleeName == "softboundcets_realloc" ||
+    calleeName == "_RV_realloc") {
+        return true;
+    }
+
+    return false;
+}
+
+Value * getAllocatedObject (CallInst * callInst) {
+    if (!isAllocator(callInst)) return nullptr;
+
+    auto callee = callInst->getCalledFunction();
+    if (callee == nullptr) return nullptr;
+    auto calleeName = callee->getName();
+    if (calleeName == "malloc" ||
+    calleeName == "calloc" || 
+    calleeName == "realloc" ||
+    calleeName == "softboundcets_malloc" ||
+    calleeName == "softboundcets_calloc" ||
+    calleeName == "softboundcets_realloc" ||
+    calleeName == "_RV_malloc" ||
+    calleeName == "_RV_calloc" ||
+    calleeName == "_RV_realloc") {
+        return callInst;
+    }
+
+    return nullptr;
+}
+
+Value * getFreedObject (CallInst * callInst) {
+    if (!isDeallocator(callInst)) return nullptr;
+
+    auto callee = callInst->getCalledFunction();
+    if (callee == nullptr) return nullptr;
+    auto calleeName = callee->getName();
+    if (calleeName == "free" || 
+    calleeName == "softboundcets_free" ||
+    calleeName == "_RV_free") {
+        return callInst->getArgOperand(0);
+    }
+
+    return nullptr;
+}
+
+uint32_t getSafeCheckCost(Instruction * callInst) {
+    uint32_t cost = 1;
+    if (CallInst * CI = dyn_cast<CallInst>(callInst)) {
+        Function * func = CI->getCalledFunction();
+        if (func) {
+            std::string funcName = func->getName();
+            if (funcName == "__softboundcets_spatial_load_dereference_check") {
+                cost = 18;
+            } else if (funcName == "__softboundcets_spatial_store_dereference_check") {
+                cost = 18;
+            } else if (funcName == "__softboundcets_temporal_load_dereference_check") {
+                cost = 12;
+            } else if (funcName == "__softboundcets_temporal_store_dereference_check") {
+                cost = 12;
+            } else if (funcName == "__softboundcets_metadata_load") {
+                cost = 57;
+            } else if (funcName == "__softboundcets_metadata_store") {
+                cost = 66;
+            } else {
+                cost = 10;
+            }
+
+        }
+    }
+    return cost;
+}
+uint32_t getSpawnableCost() {
+    return 1;
+}
+uint32_t getOriginalCost(Instruction * start, Instruction * end) {
+    uint32_t cost = 1;
+    BasicBlock * startBB = start->getParent();
+    BasicBlock * endBB = end->getParent();
+    if (endBB != startBB) {
+        bool flag = true;
+        for (Instruction& inst : *startBB) {
+            if (start == &inst) {
+                flag = true;
+            }
+            if (flag) {
+                if (CallInst * ci = dyn_cast<CallInst>(&inst)) {
+                    if (!IsSafeCheckCallForLoopFree(ci)) {
+                        cost += 20;
+                    }
+                } else {
+                    if (IsEmittingInst(inst)) ++cost;
+                }
+                
+            }
+        }
+    } else {
+        bool flag = false;
+        for (Instruction& inst : *startBB) {
+            if (start == &inst) {
+                flag = true;
+            }
+            if (flag) {
+                if (CallInst * ci = dyn_cast<CallInst>(&inst)) {
+                    if (!IsSafeCheckCallForLoopFree(ci)) {
+                        cost += 20;
+                    }
+                } else {
+                    if (IsEmittingInst(inst)) ++cost;
+                }
+
+            }
+
+            if (end == &inst) {
+                break;
+            }
+        }
+    }
+    return cost;
 }
 
 // static std::set<std::string> SoftBoundCETSLibCalls {

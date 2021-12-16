@@ -1,5 +1,5 @@
-#ifndef LOOPS_H
-#define LOOPS_H
+#ifndef LOOPS_MOVEC_H
+#define LOOPS_MOVEC_H
 
 #include "llvm/Pass.h"
 #include "LoopStructure.h"
@@ -8,7 +8,7 @@
 #include "DominatorSummary.h"
 #include "StayConnectedNestedLoopForest.h"
 #include "DOALL.h"
-#include "LoopFreeTask.h"
+
 
 #include "llvm/Analysis/CallGraph.h"
 
@@ -16,11 +16,11 @@
 
 using namespace llvm;
 
-class Loops : public ModulePass {
+class LoopsMovec : public ModulePass {
 public:
     static char ID;
-    Loops();
-    virtual ~Loops();
+    LoopsMovec();
+    virtual ~LoopsMovec();
     void getAnalysisUsage(AnalysisUsage &AU) const override;
     bool runOnModule(Module &M) override;
 
@@ -66,6 +66,8 @@ private:
 
     bool instHappensBefore(Instruction * inst, Instruction * final);
     Constant * generateJoinFunc();
+    static bool isTheMovecLibraryFunction(Function * libF);
+    static const std::unordered_set<std::string> movecLibFunction;
 
 };
 

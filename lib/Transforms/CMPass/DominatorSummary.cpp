@@ -255,6 +255,10 @@ bool DomTreeSummary::dominates (BasicBlock *B1, BasicBlock *B2) const {
 }
 
 bool DomTreeSummary::dominates (DomNodeSummary *node1, DomNodeSummary *node2) const {
+  if (node1 == nullptr || node2 == nullptr) {
+    errs() << "--259--\n";
+    return false;
+  }
   std::queue<DomNodeSummary *> worklist;
   worklist.push(node1);
   while (!worklist.empty()) {

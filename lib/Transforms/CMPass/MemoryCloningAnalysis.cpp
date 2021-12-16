@@ -388,14 +388,16 @@ bool ClonableMemoryLocation::identifyStoresAndOtherUsers (LoopStructure *loop, D
        */
       auto inst = cast<Instruction>(user);
       if (inst == nullptr) continue;
-      if (!loop->isIncluded(inst)) { 
+      // if (!loop->isIncluded(inst)) { 
         // inst->print(errs() << "Outside loop!: "); 
         // errs() << "Outside loop!: " << *inst << "\n";
         // errs() << "\n"; 
-      }
+      // }
       if (!loop->isIncluded(inst)) {
         auto block = inst->getParent();
         auto header = loop->getHeader();
+        // if (block != nullptr) errs() << "block is " << *block << "...\n";
+        // if (header != nullptr) errs() << "header is " << *header << " null...\n";
         if (!DS.DT.dominates(block, header)) {
           return false;
         }

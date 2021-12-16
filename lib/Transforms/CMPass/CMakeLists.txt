@@ -18,9 +18,11 @@ add_llvm_library( CMPass SHARED
     LoopCarriedDependencies.cpp
     LoopDependenceInfo.cpp
     LoopEnvironment.cpp
+    LoopFreeTask.cpp
     LoopGoverningIVAttribution.cpp
     LoopIterationDomainSpaceAnalysis.cpp
     Loops.cpp
+    LoopsMovec.cpp
     LoopStructure.cpp
     LoopSummary.cpp
     LoopVariables.cpp

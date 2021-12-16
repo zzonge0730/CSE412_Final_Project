@@ -217,9 +217,10 @@ void PDGAnalysis::constructEdgesFromUseDefs(PDG *pdg) {
         if (pdgValue->use_empty()) {
             errs() << "pdgValue use is empty...\n";
         }
-        errs() << " pdgValue Inst : " << isa<Instruction>(pdgValue) << "\n";
+        
         if (!isa<Instruction>(pdgValue)) continue;
-        errs() << "---getNumUses(): " << std::distance(pdgValue->use_begin(), pdgValue->use_end()) << "\n";
+        // errs() << " pdgValue Inst : " << *cast<Instruction>(pdgValue) << "\n";
+        // errs() << "---getNumUses(): " << std::distance(pdgValue->use_begin(), pdgValue->use_end()) << "\n";
         if (pdgValue->getNumUses() == 0)    continue;
 
         //the current definition has uses
@@ -230,7 +231,7 @@ void PDGAnalysis::constructEdgesFromUseDefs(PDG *pdg) {
             // errs() << "---PDGAnalysis 184---\n";
             //Instruction *User = dyn_cast<Instruction>(*U);
             if (isa<Instruction>(*U) || isa<Argument>(*U)) {
-                errs () << "Inst: " << *dyn_cast<Instruction>(*U) << "\n";
+                // errs () << "Inst: " << *dyn_cast<Instruction>(*U) << "\n";
                 auto edge = pdg->addEdge(pdgValue, *U); //from: pdgValue, to:user, pdgValue - write(def),  user - read(use)
                 edge->setMemMustType(false, true, DG_DATA_RAW);
                 // errs() << "---PDGAnalysis 188---\n";
@@ -245,7 +246,7 @@ void PDGAnalysis::constructEdgesFromAliases(PDG *pdg, Module &M) {
     for (auto &F : M) {
         //check if the function has a body
         if (F.empty()) continue;
-        errs() << "--PDGAnalysis-222: " << F.getName() << "\n";
+        // errs() << "--PDGAnalysis-222: " << F.getName() << "\n";
         //add the edges to the PDG
         constructEdgesFromAliasesForFunction(pdg, F);
     }
@@ -609,12 +610,13 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
         case AliasAnalysis::ModRef:
            break;
     }
-    bool specialRAW = false;
-    // errs() << "611: call: " << *call << ", NumOfArg: " << call->getNumArgOperands() <<"\n";
-    for (int i = 0; i < call->getNumArgOperands(); i++) {
-        // errs() << "Arg-" << i << " is: " << *(call->getArgOperand(i)) << "\n";
-        if (call->getArgOperand(i) == load->getOperand(0)) specialRAW = true;
-    }
+    //for softboundcets --- 1
+    // bool specialRAW = false;
+    // // errs() << "611: call: " << *call << ", NumOfArg: " << call->getNumArgOperands() <<"\n";
+    // for (int i = 0; i < call->getNumArgOperands(); i++) {
+    //     // errs() << "Arg-" << i << " is: " << *(call->getArgOperand(i)) << "\n";
+    //     if (call->getArgOperand(i) == load->getOperand(0)) specialRAW = true;
+    // }
     // errs() << "611: load: " << *load << ", 0Op: " << *(load->getOperand(0)) << "\n";
     // errs() << "addEdgeFromCall: " << addEdgeFromCall << "\n";
     //there is a dependence
@@ -627,9 +629,10 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
             pdg->addEdge((Value *)load, (Value *) call)->setMemMustType(true, false, DG_DATA_WAR);
         }
     }
-    if (specialRAW) {
-        pdg->addEdge((Value *)call, (Value *)load)->setMemMustType(true, true, DG_DATA_RAW);
-    }
+    //for softboundcets --- 1
+    // if (specialRAW) {
+    //     pdg->addEdge((Value *)call, (Value *)load)->setMemMustType(true, true, DG_DATA_RAW);
+    // }
 }
 
 void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, CallInst *otherCall) {
@@ -873,9 +876,81 @@ const std::unordered_set<std::string> PDGAnalysis::libraryFunction {
   "rand_r"
 };
 
+// may extermely slow down the performance of multi-threading parallel performance 
 const std::unordered_set<std::string> PDGAnalysis::externalThreadSafeFunctions {
     "malloc",
     "calloc",
     "realloc",
-    "free"
+    "free", 
+    // for soundness, below functions are considered thread safe.
+    "fgetc",
+    "fopen",
+    "fclose",
+    "fwrite",
+    "fread",
+    "fprintf",
+    "fscanf",
+
+    "printf",
+    "scanf",
+
+    // "sqrt",
+
+    // ------------ softboundcets version ------------
+    "softboundcets_malloc",
+    "softboundcets_calloc",
+    "softboundcets_realloc",
+    "softboundcets_free",
+
+    "softboundcets_fgetc",
+    "softboundcets_fopen",
+    "softboundcets_fclose",
+    "softboundcets_fwrite",
+    "softboundcets_fread",
+
+    // "softboundcets_sqrt",
+
+    // ------------ movec version ------------
+    "_RV_fclose",
+    "_RV_clearerr",
+    "_RV_feof",
+    "_RV_ferror",
+    "_RV_fflush",
+    "_RV_fgetpos",
+    "_RV_fopen",
+    "_RV_fdopen",
+    "_RV_freopen",
+    "_RV_fileno",
+    "_RV_fread",
+    "_RV_fseek",
+    "_RV_fsetpos",
+    "_RV_ftell",
+    "_RV_fwrite",
+    "_RV_remove",
+    "_RV_rename",
+    "_RV_rewind",
+    "_RV_setbuf",
+    "_RV_setvbuf",
+    "_RV_tmpfile",
+    "_RV_tmpnam",
+    "_RV_vfprintf",
+    "_RV_vprintf",
+    "_RV_vsprintf",
+    "_RV_fgetc",
+    "_RV_fgets",
+    "_RV_fputc",
+    "_RV_fputs",
+    "_RV__IO_getc",
+    "_RV_gets",
+    "_RV__IO_putc",
+    "_RV_puts",
+    "_RV_ungetc",
+    "_RV_perror",
+    "_RV_free",
+    "_RV_malloc",
+    "_RV_realloc",
+    "_RV_read",
+    "_RV_write"
+
+
 };
