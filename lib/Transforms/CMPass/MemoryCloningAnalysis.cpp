@@ -478,10 +478,10 @@ bool ClonableMemoryLocation::isThereRAWThroughMemoryFromOutsideLoop (
        */
       return true;
     };
-    if (ldg->iteratorOverDependencesTo(inst, false, true, false, false, functor)){
+    if (ldg->iteratorOverDependencesFrom(inst, false, true, false, false, functor)){
 
       /*
-       * We found a memory RAW from outside the loop to inside that is related to our stack object.
+       * We found a memory RAW from a store inside the loop to a load after the loop.
        */
       return true;
     }
@@ -495,7 +495,7 @@ bool ClonableMemoryLocation::isThereRAWThroughMemoryFromOutsideLoop (LoopStructu
   /*
    * Check every read of the stack object.
    */
-  if (  this->isThereRAWThroughMemoryFromOutsideLoop(loop, al, ldg, this->loadInstructions)
+  if (  this->isThereRAWThroughMemoryFromOutsideLoop(loop, al, ldg, this->storingInstructions)
         || this->isThereRAWThroughMemoryFromOutsideLoop(loop, al, ldg, this->nonStoringInstructions)
      ){
     return true;
@@ -511,20 +511,27 @@ bool ClonableMemoryLocation::identifyInitialStoringInstructions (DominatorSummar
    * Group non-storing instructions by sets of dominating basic blocks
    * for which any two sets do not dominate each other
    */
+  std::unordered_set<Instruction *> instructionsNeedingCoverage;
   for (auto nonStoringInstruction : this->nonStoringInstructions) {
+    instructionsNeedingCoverage.insert(nonStoringInstruction);
+  }
+  for (auto loadInstruction : this->loadInstructions) {
+    instructionsNeedingCoverage.insert(loadInstruction);
+  }
+  for (auto instToCover : instructionsNeedingCoverage) {
 
     /*
      * Fetch the basic block of the current instruction.
      */
-    auto nonStoringBlock = nonStoringInstruction->getParent();
+    auto instBlock = instToCover->getParent();
 
     // nonStoringInstruction->print(errs() << "Grouping non storing instruction: "); errs() << "\n";
 
     auto belongsToExistingSet = false;
     for (auto &overrideSet : this->overrideSets) {
       auto overrideSetDominatingBlock = overrideSet->dominatingBlockOfNonStoringInsts;
-      if (DS.DT.dominates(overrideSetDominatingBlock, nonStoringBlock)) {
-        overrideSet->subsequentNonStoringInstructions.insert(nonStoringInstruction);
+      if (DS.DT.dominates(overrideSetDominatingBlock, instBlock)) {
+        overrideSet->subsequentNonStoringInstructions.insert(instToCover);
         belongsToExistingSet = true;
 
         // overrideSet->dominatingBlockOfNonStoringInsts->printAsOperand(
@@ -545,8 +552,8 @@ bool ClonableMemoryLocation::identifyInitialStoringInstructions (DominatorSummar
 
     //auto overrideSet = std::move(make_unique<OverrideSet>());
     auto overrideSet = new OverrideSet();
-    overrideSet->dominatingBlockOfNonStoringInsts = nonStoringBlock;
-    overrideSet->subsequentNonStoringInstructions.insert(nonStoringInstruction);
+    overrideSet->dominatingBlockOfNonStoringInsts = instBlock;
+    overrideSet->subsequentNonStoringInstructions.insert(instToCover);
     //this->overrideSets.insert(std::move(overrideSet));
     this->overrideSets.insert(std::move(overrideSet));
   }
@@ -590,6 +597,8 @@ bool ClonableMemoryLocation::identifyInitialStoringInstructions (DominatorSummar
 }
 
 bool ClonableMemoryLocation::areOverrideSetsFullyCoveringTheAllocationSpace (void) const {
+  if (overrideSets.size() == 0) return false;
+  
   for (auto &overrideSet : overrideSets) {
     if (!this->isOverrideSetFullyCoveringTheAllocationSpace(overrideSet)) {
       return false;
