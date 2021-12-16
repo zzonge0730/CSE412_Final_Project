@@ -47,7 +47,7 @@ using namespace llvm;
           }
 
           auto unwrappedEntryNode = graph->getEntryNode();
-          if (nodeToWrapperMap.find(unwrappedEntryNode) != nodeToWrapperMap.end()) {
+          if (unwrappedEntryNode && nodeToWrapperMap.find(unwrappedEntryNode) != nodeToWrapperMap.end()) {
             this->entryNode = nodeToWrapperMap.at(unwrappedEntryNode);
           }
 
