@@ -204,26 +204,47 @@ void LoopDependenceInfo::removeUnnecessaryDependenciesThatCloningMemoryNegates(P
         auto consumer = dyn_cast<Instruction>(edge->getIncomingT());
         if (!producer || !consumer) continue;
 
-        auto locationProducer = this->memoryCloningAnalysis->getClonableMemoryLocationFor(producer);
-        auto locationConsumer = this->memoryCloningAnalysis->getClonableMemoryLocationFor(consumer);
-        if (!locationProducer || !locationConsumer) continue;
+        auto locationsProducer = this->memoryCloningAnalysis->getClonableMemoryLocationsFor(producer);
+        auto locationsConsumer = this->memoryCloningAnalysis->getClonableMemoryLocationsFor(consumer);
+        if (locationsProducer.empty() || locationsConsumer.empty()) continue;
 
         //---zyy not much clear to understand
-        bool isRAW = edge->isRAWDependence() && locationProducer->isInstructionStoringLocation(producer) 
-        && locationConsumer->isInstructionLoadingLocation(consumer);
+        bool isRAW = false;
+        for (auto locP : locationsProducer) {
+            for (auto locC : locationsConsumer) {
+                if (edge->isRAWDependence() && 
+                locP->isInstructionStoringLocation(producer) &&
+                locC->isInstructionLoadingLocation(consumer))
+                isRAW = true;
+            }
+        }
     
-        bool isWAR = edge->isWARDependence() && locationConsumer->isInstructionLoadingLocation(producer)
-        && locationProducer->isInstructionStoringLocation(consumer);
+        bool isWAR = false;
+        for (auto locP : locationsProducer) {
+            for (auto locC : locationsConsumer) {
+                if (edge->isWARDependence() && 
+                locP->isInstructionLoadingLocation(producer) &&
+                locC->isInstructionStoringLocation(consumer))
+                isWAR = true;
+            }
+        }
 
-        bool isWAW = edge->isWAWDependence() && locationConsumer->isInstructionStoringLocation(producer)
-        && locationProducer->isInstructionStoringLocation(consumer);
+        bool isWAW = false;
+        for (auto locP : locationsProducer) {
+            for (auto locC : locationsConsumer) {
+                if (edge->isWAWDependence() && 
+                locP->isInstructionStoringLocation(producer) &&
+                locC->isInstructionStoringLocation(consumer))
+                isWAW = true;
+            }
+        }
 
         if (!isRAW && !isWAR && !isWAW) continue;
 
         producer->print(errs() << "Found alloca location for producer: "); errs() << "\n";
         consumer->print(errs() << "Found alloca location for consumer: "); errs() << "\n";
-        locationProducer->getAllocation()->print(errs() << "producer Alloca: "); errs() << "\n";
-        locationConsumer->getAllocation()->print(errs() << "consumer Alloca: "); errs() << "\n";
+        // locationProducer->getAllocation()->print(errs() << "producer Alloca: "); errs() << "\n";
+        // locationConsumer->getAllocation()->print(errs() << "consumer Alloca: "); errs() << "\n";
 
         edgesToRemove.insert(edge);
     }
