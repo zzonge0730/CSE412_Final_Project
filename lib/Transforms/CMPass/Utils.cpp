@@ -112,7 +112,11 @@ bool IsSafeCheckCallForLoopFree(CallInst *CI) {
             callName.equals("__softboundcets_spatial_load_dereference_check") ||
             callName.equals("__softboundcets_temporal_store_dereference_check") ||
             callName.equals("__softboundcets_spatial_store_dereference_check") ||
-            callName.equals("__softboundcets_metadata_store")
+            callName.equals("__softboundcets_metadata_store") ||
+            callName.equals("_RV_check_dpv") || 
+            callName.equals("_RV_check_dpv_ss") || 
+            callName.equals("_RV_check_dpc") || 
+            callName.equals("_RV_check_dpc_ss")
         ) {
             return true;
         }

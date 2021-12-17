@@ -8,7 +8,7 @@
 #include "DominatorSummary.h"
 #include "StayConnectedNestedLoopForest.h"
 #include "DOALL.h"
-
+#include "LoopFreeTask.h"
 
 #include "llvm/Analysis/CallGraph.h"
 

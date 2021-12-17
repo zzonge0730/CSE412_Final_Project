@@ -83,6 +83,7 @@ bool LoopsMovec::runOnModule(Module &M) {
     std::vector<DOALLTask *> loopTasks;
 
     errs() << "tree size: " << forest->getTrees().size() << "\n";
+    //loop analysis
     //parallelize the loop we selected, from outermost to the inner ones, currently only the outermost
     for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
         //select the loop to parallelize
@@ -554,6 +555,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 //cal allInstsToOneCallInstInLoopBody - customedFuncRelateCode
                 std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBodyFinal;
                 std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBodyFinal;
+                //remove movec wrapper func, that's to way, we don't handle it
                 for (auto pair : safeCheckInstsInLoopBody) {
                     bool removed = false;
                     for (auto I : pair.second) {
@@ -583,7 +585,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 }
                 errs() << "^^^^^433^^^^^\n";
 
-                
+                //TODO: may not handle these unknown memory load...
                 std::vector<Value *> needVariableInitLiveInVars;
                 for (auto pair : liveInInitVal) {
                     if (!pair.second) {
@@ -615,6 +617,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 // }
 
                 // std::unordered_map<Instruction *, std::set<Instruction *>> notToParallelCodes;
+                //remove movec wrapper func, that's to way, we don't handle it
                 for (auto pair : allInstsToOneCallInstInLoopBody) {
                     bool removed = false;
                     for (auto I : pair.second) {
@@ -709,7 +712,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                     for (auto in : customedFunRelatedCodeInLoop) {
                         if (in == inst) {
                             filterFlag = true;
-                            errs() << "this task we can not handle, because of custom func-770...\n";
+                            errs() << "this task we can not handle, because of custom movec wrapper func-770...\n";
                             break;
                         }
                     }
@@ -738,22 +741,22 @@ bool LoopsMovec::runOnModule(Module &M) {
                 loopTasks.push_back(task);
 
                 //print some info for debugging
-                std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter1;
-                for (iter1 = safeCheckInstsInLoopBodyFinal.begin(); iter1 != safeCheckInstsInLoopBodyFinal.end(); ++iter1) {
-                    errs() << "--AA: " << *(iter1->first) << " has : " << iter1->second.size() << "\n";
-                    for (auto I : iter1->second) {
-                        errs() << *I <<"\n";
-                    }
-                }
+                // std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter1;
+                // for (iter1 = safeCheckInstsInLoopBodyFinal.begin(); iter1 != safeCheckInstsInLoopBodyFinal.end(); ++iter1) {
+                //     errs() << "--AA: " << *(iter1->first) << " has : " << iter1->second.size() << "\n";
+                //     for (auto I : iter1->second) {
+                //         errs() << *I <<"\n";
+                //     }
+                // }
                 errs() << "^^^^^safeCheckInstsInLoopBodyAfterRemoved^^^^^\n";
-                std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter2;
-                for (iter2 = allInstsToOneCallInstInLoopBodyFinal.begin(); iter2 != allInstsToOneCallInstInLoopBodyFinal.end(); ++iter2) {
-                    errs() << "--BB: " << *(iter2->first) << " has : " << iter2->second.size() << "\n";
-                    for (auto I : iter2->second) {
-                        // if (isa<LoadInst>(I)) errs() << "Inst: " << *I << ", Op0 Type: " << *cast<LoadInst>(I)->getOperand(0)->getPointerElementType() << "\n";
-                        errs() << *I <<"\n";
-                    }
-                }
+                // std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter2;
+                // for (iter2 = allInstsToOneCallInstInLoopBodyFinal.begin(); iter2 != allInstsToOneCallInstInLoopBodyFinal.end(); ++iter2) {
+                //     errs() << "--BB: " << *(iter2->first) << " has : " << iter2->second.size() << "\n";
+                //     for (auto I : iter2->second) {
+                //         // if (isa<LoadInst>(I)) errs() << "Inst: " << *I << ", Op0 Type: " << *cast<LoadInst>(I)->getOperand(0)->getPointerElementType() << "\n";
+                //         errs() << *I <<"\n";
+                //     }
+                // }
                 errs() << "^^^^^allInstsToOneCallInstInLoopBodyAfterRemoved^^^^^\n";
             }
 
@@ -764,32 +767,13 @@ bool LoopsMovec::runOnModule(Module &M) {
             //     errs() << "\n";
             // }
 
-            
-            // handle loop body --- remove the rendundant basicblock in loop latch
-
-
-
-            //determine where to insert this function
-
-            // create this function
-
-            //insert this function
-
-            //handle br relation between basicblocks
-
-
             //keep track of the parallelization
-            // if (true) {
             //     errs() << "Parallelizer: Loop " << loopID << " has been parallelized.\n";
             //     modified = true;
             //     for (auto bb : ls->getBasicBlocks()) {
             //         modifiedBBs[bb] = true;
             //     }
-            // }
         }
-
-
-
 
         //free the memory
         // for (auto loop : loopsToParallelize) {
@@ -798,7 +782,198 @@ bool LoopsMovec::runOnModule(Module &M) {
 
     }
 
+    //TODO: loop free opt
+    //loop free analysis
+    std::vector<LoopFreeTask *> loopFreeTasks;
+    uint32_t loopFreeId = 0;
+    
+    // get non loop basic blocks
+    for (Function& F : *this->program) {
+        if (F.isDeclaration() || F.isIntrinsic() || F.empty()) continue;
+        StringRef nameF = F.getName();
+        if (nameF.startswith("_RV_") && !nameF.equals("_RV_main")) continue;
+        //get the functionPDG
+        PDG * funcPDG = this->pdgAnalysis->getFunctionPDG(F);
 
+        std::vector<Instruction *> safeCheckCallInstInNonLoopBody;
+        //safecheck - safecheckRelatedCode - 
+        //safechecks - Loc[xx, xx, xx]
+        std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInNonLoopBody;
+        std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckCallInstJoinPoints;
+        std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsMoveRange;
+        
+        std::unordered_map<BasicBlock *, std::unordered_set<Instruction *>> safeCheckInNonLoopBB;
+        //get safeCheck in the non loop basicblocks
+        for (BasicBlock& BB : F) {
+            if (allLoopBasicBlocks.count(&BB) > 0) continue;
+            // determine each safecheck 
+            std::unordered_set<Instruction *> safeCheckNonLoop;
+            for (Instruction& I : BB) {
+                if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+                    if (IsSafeCheckCallForLoopFree(CI)) {
+                        safeCheckCallInstInNonLoopBody.push_back(&I);
+                        safeCheckNonLoop.insert(&I);
+                    }
+                }
+            }
+            safeCheckInNonLoopBB[&BB] = safeCheckNonLoop;
+        }
+
+        //get safecheck related codes , joinpoints and locs
+        for (auto callInst : safeCheckCallInstInNonLoopBody) {
+            std::set<Instruction *> safeCheckRelatedInsts;
+            std::set<Instruction *> joinpoints;
+            for (auto subedge : funcPDG->getEdges()) {
+                auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                auto toNodeSubT = subedge->getIncomingNode()->getT();
+
+                if (cast<Instruction>(toNodeSubT) == callInst) {
+                    if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
+                        if (safeCheckRelatedInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && 
+                        callInst->getParent() == cast<Instruction>(fromNodeSubT)->getParent()) {
+                            safeCheckRelatedInsts.insert(cast<Instruction>(fromNodeSubT));
+                        }
+                    }
+                }
+
+                if (cast<Instruction>(fromNodeSubT) == callInst &&
+                subedge->dataDepToString() == "RAW") {
+                    if (fromNodeSubT != toNodeSubT) {
+                        joinpoints.insert(cast<Instruction>(toNodeSubT));
+                    }
+                }
+            }
+            
+            safeCheckInstsInNonLoopBody[callInst] = safeCheckRelatedInsts;
+            safeCheckCallInstJoinPoints[callInst] = joinpoints;
+
+            //joinpoints means the farthest location, if it is null, the join point is the last instruction of a function
+            //find the the forward most location
+            std::set<Instruction *> locs; // if it is null, the forward most is the entry point (should judge whether is a call or bitcast inst)
+            for (auto inst : safeCheckRelatedInsts) {
+                
+                for (auto subedge : funcPDG->getEdges()) {
+                    auto from = cast<Instruction>(subedge->getOutgoingNode()->getT());
+                    auto to = cast<Instruction>(subedge->getIncomingNode()->getT());
+
+                    if (to == inst) {
+                        if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW" &&
+                        from->getParent() == inst->getParent()) {
+                            locs.insert(from);
+                        }
+                    }
+                }
+
+                if (isa<CallInst>(inst)) { //maybe __softboundcets_load_lock_shadow_stack or other like
+                    locs.insert(inst);
+                }
+
+            }
+            safeCheckInstsMoveRange[callInst] = locs;
+        }
+
+        //TODO: enumerate all tasks combinations for each basic block
+        // calculate each combination cost
+        // choose the min cost task combination and create the loop free task
+
+
+
+
+        //create the loop free task, and set some info
+        for (BasicBlock& BB : F) {
+            if (allLoopBasicBlocks.count(&BB) > 0) continue;
+
+            Instruction * taskJoinPoint = nullptr;
+            std::unordered_set<Instruction * > safeCheckCodeForOneTask;
+
+            for (Instruction& I : BB) {
+                if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+                    if (IsSafeCheckCallForLoopFree(CI)) {
+                        if (taskJoinPoint == nullptr) {
+                            std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
+                            if (joinpoints.size() == 0) {
+                                taskJoinPoint = BB.getTerminator();
+                            } else {
+                                bool flag = false;
+                                for (auto joinp : joinpoints) {
+                                    if (joinp->getParent() == &BB) {
+                                        taskJoinPoint = joinp;
+                                        flag = true;
+                                    }
+                                }
+                                if (!flag) taskJoinPoint = BB.getTerminator();
+                            }
+                            safeCheckCodeForOneTask.insert(&I);
+                        } else {
+                            if (instHappensBefore(&I, taskJoinPoint)) {
+                                std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
+                                if (joinpoints.size() == 0) {
+                                    taskJoinPoint = BB.getTerminator();
+                                } else {
+                                    bool flag = false;
+                                    for (auto joinp : joinpoints) {
+                                        if (joinp->getParent() == &BB) {
+                                            if (!instHappensBefore(joinp, taskJoinPoint)) {
+                                                taskJoinPoint = joinp;
+                                            }
+                                            flag = true;
+                                        }
+                                    }
+                                    if (!flag) {
+                                        taskJoinPoint = BB.getTerminator();
+                                    }
+                                }
+                                safeCheckCodeForOneTask.insert(&I);
+                            } else {
+                                //a new task
+                                LoopFreeTask *loopFreeTask = new LoopFreeTask(id++, this->program);
+                                loopFreeTask->setSafeCheckCodes(safeCheckCodeForOneTask);
+                                loopFreeTask->setInfo( safeCheckInstsInNonLoopBody,
+                                safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
+                                loopFreeTask->setJoinPoint(taskJoinPoint);
+                                loopFreeTask->setTargetBB(&BB);
+                                loopFreeTask->setJoinFunc(joinFunc);
+                                loopFreeTasks.push_back(loopFreeTask);
+                                safeCheckCodeForOneTask.clear();
+
+                                std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
+                                if (joinpoints.size() == 0) {
+                                    taskJoinPoint = BB.getTerminator();
+                                } else {
+                                    bool flag = false;
+                                    for (auto joinp : joinpoints) {
+                                        if (joinp->getParent() == &BB) {
+                                            if (!instHappensBefore(joinp, taskJoinPoint)) {
+                                                taskJoinPoint = joinp;
+                                            }
+                                            flag = true;
+                                        }
+                                    }
+                                    if (!flag) {
+                                        taskJoinPoint = BB.getTerminator();
+                                    }
+                                }
+                                safeCheckCodeForOneTask.insert(&I);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (safeCheckCodeForOneTask.size() != 0) {
+                //a new task
+                LoopFreeTask *loopFreeTask = new LoopFreeTask(loopFreeId++, this->program);
+                loopFreeTask->setSafeCheckCodesForOneTask(safeCheckCodeForOneTask);
+                loopFreeTask->setInfo(safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
+                loopFreeTask->setTargetBB(&BB);
+                loopFreeTask->setJoinPoint(BB.getTerminator());
+                loopFreeTask->setJoinFunc(joinFunc);
+                loopFreeTasks.push_back(loopFreeTask);
+            }
+
+        }
+
+    }
 
     // transform those loopTasks
     for (auto task : loopTasks) {

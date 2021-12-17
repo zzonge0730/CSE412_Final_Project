@@ -168,7 +168,7 @@ BasicBlock * DOALLTask::addBasicBlockStub (BasicBlock *original) {
 
     //allocate a new basic block
     auto newBB = BasicBlock::Create(ctx, "", this->F);
-    errs() << "---addNewBB\n";
+    // errs() << "---addNewBB\n";
     this->addBasicBlock(original, newBB);
     return newBB;
 }
@@ -184,7 +184,7 @@ BasicBlock * DOALLTask::cloneAndAddBasicBlock (BasicBlock *original) {
 
 BasicBlock * DOALLTask::cloneAndAddBasicBlock (BasicBlock *original, std::function<bool (Instruction *origInst)> filter) {
     auto cloneBB = this->addBasicBlockStub(original);
-    errs() << "---cloneAddBB--186\n";
+    // errs() << "---cloneAddBB--186\n";
     IRBuilder<> builder(cloneBB);
     for (auto& I : *original) {
         if (!filter(&I)) continue;
@@ -663,11 +663,11 @@ std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) 
         if (liveInType->isPointerTy()) {
             //just need to bitcast
             castArgForNew = liveIn;
-            errs() << "--622\n";
+            // errs() << "--622\n";
         } else {
             castArgForNew = new AllocaInst(liveInType, "", this->whereToInsertFunc);
             new StoreInst(liveIn, castArgForNew, this->whereToInsertFunc);
-            errs() << "--626\n";
+            // errs() << "--626\n";
         }
         // errs() << "castArgForNew: " << *castArgForNew <<"\n";
         BitCastInst * bcInst = new BitCastInst(castArgForNew, voidStarTy, "", this->whereToInsertFunc);
@@ -688,7 +688,7 @@ std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) 
 
 void DOALLTask::eraseSafeCheckCodes() {
 
-    //adjust data flows in original loops for Movec tool
+    //adjust data flows in original loops for MoveC
     for (auto p : this->safeCheckInstsInLoopBody) {
         if (p.second.size() == 0) continue;
         if (CallInst * CI = dyn_cast<CallInst>(p.first)) {
@@ -856,12 +856,12 @@ bool DOALLTask::isOriginalInst(Instruction * inst) {
 void DOALLTask::splitLoop() {
     auto loopStructure = this->LDI->getLoopStructure();
 
-    errs() << "----loopStructure of a task----\n";
-    std::string str;
-    raw_string_ostream ros(str);
-    loopStructure->print(ros);
-    ros.flush();
-    errs() << str << "\n";
+    // errs() << "----loopStructure of a task----\n";
+    // std::string str;
+    // raw_string_ostream ros(str);
+    // loopStructure->print(ros);
+    // ros.flush();
+    // errs() << str << "\n";
 
     auto& ctx = this->M->getContext();
     Type * voidStarTy = PointerType::getUnqual(Type::getInt8Ty(ctx));
@@ -1104,27 +1104,27 @@ void DOALLTask::splitLoop() {
 
     errs() << "SplitLoop 701" << "\n";
 
-
+    //clone Instructions in the parallelized loop task
     for (auto BB : loopStructure->getBasicBlocks()) {
         std::string label = BB->getName();
         auto cloneBB = BasicBlock::Create(ctx, label, newLoopFunc);
         bbMap[BB] = cloneBB;
         IRBuilder<> builder(cloneBB);
         for (auto& I : *BB) {
+            //not clone branchInst, which is reconstructed by our approach later
             if (isa<BranchInst>(&I)) continue;
 
             // if (isDoNotParallelCodes(&I) && (!instIsInBrInstRelated(&I))) continue; 
 
-            if (true) { 
-                if ((!instIsInLoopBody(&I)) /*outer most loop latch & header*/ 
-                || (instIsInLoopBody(&I) && (instIsInAllInstsToOneCall(&I) || instIsInBrInstRelated(&I) || phiCornerCase(&I, BB) || succIsPHIBB(BB)))) {
-                    auto cloneInst = builder.Insert(I.clone());
-                    instAdded.insert(cloneInst);
-                    // instMap[&I] = cloneInst;
-                    this->instructionClones[&I] = cloneInst;
-                }
-                
+            
+            if ((!instIsInLoopBody(&I)) /*outer most loop latch & header*/ 
+            || (instIsInLoopBody(&I) && (instIsInAllInstsToOneCall(&I) || instIsInBrInstRelated(&I) || phiCornerCase(&I, BB) || succIsPHIBB(BB)))) {
+                auto cloneInst = builder.Insert(I.clone());
+                instAdded.insert(cloneInst);
+                // instMap[&I] = cloneInst;
+                this->instructionClones[&I] = cloneInst;
             }
+
         } 
     }
     errs() << "SplitLoop: Finished cloning non-branch instructions\n";
@@ -1225,7 +1225,6 @@ void DOALLTask::splitLoop() {
     //             break;
     //         }
     //     }
-
     // }
     errs() << "SplitLoop: Finished stitching together the new loop CFG\n";
     /*
@@ -1307,7 +1306,7 @@ void DOALLTask::splitLoop() {
     errs() << "SplitLoop: Finished fixing instruction dependencies in the new loop\n";
 
     /*
-    * Fix data flows for all instructions in exit blocks (only need to fix phi nodes)
+    * TODO: Fix data flows for all instructions in exit blocks (only need to fix phi nodes)
     */
     // for (auto loopExitBlock : loopStructure->getLoopExitBasicBlocks()) {
     //     for (auto &I : *loopExitBlock) {
@@ -1333,7 +1332,7 @@ void DOALLTask::splitLoop() {
     
     // errs() << "SplitLoop is: " << *newLoopFunc << "\n";
 
-    //create wrapper function
+    //create wrapper function for parallelized loop task function
     std::vector<Type *> wrapperFuncArgs;
     wrapperFuncArgs.reserve(numArgs);
     
