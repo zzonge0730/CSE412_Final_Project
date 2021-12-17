@@ -5,11 +5,9 @@ char LoopsMovec::ID = 0;
 static RegisterPass<LoopsMovec> X("LoopsMovec", "Find and Get Loops in the program for Movec");
 
 LoopsMovec::LoopsMovec() : ModulePass{ID} {
-
 }
 
 LoopsMovec::~LoopsMovec() {
-
 }
 
 void LoopsMovec::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -33,21 +31,24 @@ bool LoopsMovec::runOnModule(Module &M) {
     
     std::vector<LoopStructure *> * loopStructures = this->getLoopStructures();
 
+    //No loops need to consider
     if (loopStructures->size() == 0) {
         errs() << "There is no loop to consider...\n";
         delete loopStructures;
         return false;
     }
 
-    // for (auto loopS : *loopStructures) {
-    //     errs() << "----loopStructure----\n";
-    //     std::string str;
-    //     raw_string_ostream ros(str);
-    //     loopS->print(ros);
-    //     ros.flush();
-    //     errs() << str << "\n";
-
-    // }
+    //Print loop info
+    /*
+        for (auto loopS : *loopStructures) {
+        errs() << "----loopStructure----\n";
+        std::string str;
+        raw_string_ostream ros(str);
+        loopS->print(ros);
+        ros.flush();
+        errs() << str << "\n";
+        }
+    */
 
     //generate the nesting forest
     auto forest = this->organizeLoopsInTheirNestingForest(*loopStructures);
@@ -56,72 +57,43 @@ bool LoopsMovec::runOnModule(Module &M) {
     //print the loops
     auto trees = forest->getTrees();
     for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
-        // errs() << "print tree: " << &tree << "\n";
-        // auto loopStructure = tree->getLoop();
-        // auto loopID = loopStructure->getID();
         auto loopS = (*treeIt)->getLoop();
         auto loopI = loopS->getID();
         auto loopFunction = loopS->getFunction();
         auto loopHeader = loopS->getHeader();
         errs() << "printHeader& : " << &loopHeader << "\n";
-
         std::string prefix{"Parallelizer:    "};
-        // for (auto i = 1; i < treeLevel; i++) {
-        //     prefix.append("    ");
-        // }
-
         errs() << prefix << "ID: " << loopI << "(" << ")\n";
         errs() << prefix << "    Function: " << loopFunction->getName() << "\n";
         errs() << prefix << "    Loop: " << *loopHeader->getFirstNonPHI() << "\n";
         errs() << prefix << "    LoopHeader: " << *loopHeader << "\n";
         errs() << prefix << "    Loop nesting level: " <<  loopS->getNestingLevel() << "\n";
-
-        // auto printTree = [](StayConnectedNestedLoopForestNode *n, uint32_t treeLevel) {
-        //     auto loopS = n->getLoop();
-        //     auto loopI = loopS->getID();
-        //     auto loopFunction = loopS->getFunction();
-        //     auto loopHeader = loopS->getHeader();
-        //     errs() << "printHeader& : " << &loopHeader << "\n";
-
-        //     std::string prefix{"Parallelizer:    "};
-        //     for (auto i = 1; i < treeLevel; i++) {
-        //         prefix.append("    ");
-        //     }
-
-        //     errs() << prefix << "ID: " << loopI << "(" << treeLevel << ")\n";
-        //     errs() << prefix << "    Function: " << loopFunction->getName() << "\n";
-        //     errs() << prefix << "    Loop: " << *loopHeader->getFirstNonPHI() << "\n";
-        //     errs() << prefix << "    LoopHeader: " << *loopHeader << "\n";
-        //     errs() << prefix << "    Loop nesting level: " <<  loopS->getNestingLevel() << "\n";
-
-        //     return false;
-        // };
-        // tree->visitPreOrder(printTree);
     }
 
+    //Create Join Function Pointer
     Constant * joinFunc = generateJoinFunc();
 
+    //TODO: used to record all basic blocks belong to loops (identify loop code and non-loop code)
     std::unordered_set<BasicBlock *> allLoopBasicBlocks;
 
-    //parallelize the loop we selected, from outermost to the inner ones
-    bool modified = false;
+    //TODO: used to record the basicblock is modified by the loop parallelizer
     std::unordered_map<BasicBlock *, bool> modifiedBBs{};
+
+    //used to store all loop tasks to be transformed
     std::vector<DOALLTask *> loopTasks;
+
     errs() << "tree size: " << forest->getTrees().size() << "\n";
+    //parallelize the loop we selected, from outermost to the inner ones, currently only the outermost
     for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
         //select the loop to parallelize
-        // errs() << "tree: " << &tree << "\n";
         auto loopsToParallelize = this->selectTheOrderOfLoopsToParallelize(*treeIt); 
         errs() << "loops size: " << loopsToParallelize.size() << "\n";
-        //get max nestinglevel
         
-        // std::set<uint32_t> levelSet;
+        //store all loop preheaders
         std::unordered_set<BasicBlock *> loopPreHeaders;
         for (auto loop : loopsToParallelize) {
             loopPreHeaders.insert(loop->getLoopStructure()->getPreHeader());
         }
-        // uint32_t maxNestingLevel = *--levelSet.end();
-
         //parallelize the loops
         for (auto loop : loopsToParallelize) {
             //check if we can parallelize the loop
@@ -132,58 +104,22 @@ bool LoopsMovec::runOnModule(Module &M) {
             if (nameF.startswith("_RV_") && !nameF.equals("_RV_main")) {
                 continue;
             }
-
             errs() << "Do Parallel In Fun: " << nameF << "\n";
-            // errs() << "----loopStructure By sort----\n";
-            // std::string str;
-            // raw_string_ostream ros(str);
-            // ls->print(ros);
-            // ros.flush();
-            // errs() << str << "\n";
-            // auto safe = true;
-            // for (auto BB : ls->getBasicBlocks()) {
-            //     if (modifiedBBs[BB]) {
-            //         safe = false;
-            //         break;
-            //     }
-            // }
 
             auto loopID = ls->getID();
-            // if (!safe) {
-            //     errs() << "Parallelizer: LoopID:" << loopID << "cannot be parallelized because one of its parent has been parallelized already...\n";
-            //     continue;
-            // }
-
-            //parallelize the current loop
-            // auto loopIsParallelized = this->parallelizeLoop(loop, doall);
-
-            //print loop PDG
-            
-            // errs() << "loopID: " << loopID << " 's pdg: " <<"\n";
-            // std::string loopStr;
-            // raw_string_ostream loopRos(loopStr);
-            // loopPDG->print(loopRos);
-            // loopRos.flush();
-            // errs() << loopStr << "\n";
             errs() << "----------------\n";
-
-
-
+            //parallelize the current loop  
             //determine whether the curret loop should be paralleled
             //for now, we only consider the outer most loop
             //that's to say, the nest level  is 1
             if (ls->getNestingLevel() == 1) {
-                PDG * wholePdg = this->pdgAnalysis->getPDG();
+                // PDG * wholePdg = this->pdgAnalysis->getPDG();
                 PDG * loopPDG = loop->getLoopPDG();
                 Function * loopFunc = ls->getFunction();
                 PDG * loopFuncPDG = this->pdgAnalysis->getFunctionPDG(*loopFunc);
-                
                 for (auto BB : ls->getBasicBlocks()) {
-                    // errs() << "---BB: " << *BB << "\n";
                     allLoopBasicBlocks.insert(BB);
                 }
-
-
                 // for (auto BB : ls->getLoopExitBasicBlocks()) {
                 //     errs() << "---exit: " << *BB <<"\n";
                 // }
@@ -213,21 +149,20 @@ bool LoopsMovec::runOnModule(Module &M) {
                 std::unordered_set<Instruction *> joinPoints;
                 for (BasicBlock& BB : *loopHeader->getParent()) {
                     for (Instruction& inst : BB) {
-                        if (isa<ReturnInst>(&inst)) {    
+                        if (isa<ReturnInst>(&inst)) {   
+                            //TODO: some join points can be optimized 
                             joinPoints.insert(&(*(BB.getFirstInsertionPt())));
                         }
                     }
                 }
                 task->setJoinPoints(joinPoints);
 
-
                 //copy loop header
                 task->setLoopHeader(loopHeader);
-                
-
-
-                
+                                
+                // liveIn variables -- corresponds init value
                 std::unordered_map<Value *, Value *> liveInInitVal;
+                // bitcast Type live variables -- correspondings related instructions
                 std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastLiveInVarRelated;
                 // get liveIn Vars
                 for (auto envIndex : loop->loopEnviroment->getEnvIndicesOfLiveInVars()) {
@@ -260,6 +195,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                     }
                 }
                 
+                // to get the store value for the init value
                 for (auto pair : liveInInitVal) {
                     StoreInst * theLastStoreInst = nullptr;
                     // for (auto subedge : wholePdg->getEdges()) {
@@ -308,7 +244,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 task->setLiveInInitVal(liveInInitVal);
 
                 errs() << "setLiveInInitVal...\n";
-                // analysis liveInVars relations
+                // analysis bitcast type liveInVars related instructions
                 for (auto pair : bitcastLiveInVarRelated) {
                     std::unordered_set<Instruction *> workListForBitcast{cast<Instruction>(pair.first)};
                     std::unordered_set<Instruction *> related{};
@@ -352,7 +288,6 @@ bool LoopsMovec::runOnModule(Module &M) {
                 
                 // is movec wrapper func, not movec lib function
                 std::unordered_set<Instruction *> customedFunRelatedCodeInLoop;
-                bool relatedFlag = false;
                 for (auto BB : ls->orderedBBs) {
                     for (auto& I : *BB) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
@@ -367,10 +302,11 @@ bool LoopsMovec::runOnModule(Module &M) {
                         }
                     }
                 }
-                for (auto inst : customedFunRelatedCodeInLoop) {
-                    errs() << "codeFunRelatedInst: " << *inst << "\n";
-                }
+                // for (auto inst : customedFunRelatedCodeInLoop) {
+                //     errs() << "codeFunRelatedInst: " << *inst << "\n";
+                // }
 
+                //get related instructions for customized Functions
                 std::unordered_set<Instruction *> workListForCustFunCode(customedFunRelatedCodeInLoop.begin(), customedFunRelatedCodeInLoop.end());
                 while (!workListForCustFunCode.empty()) {
                     Instruction * inst = *workListForCustFunCode.begin();
@@ -402,9 +338,9 @@ bool LoopsMovec::runOnModule(Module &M) {
                         }
                     }
                 }
-                for (auto inst : customedFunRelatedCodeInLoop) {
-                    errs() << "codeFunRelatedInst111: " << *inst << "\n";
-                }
+                // for (auto inst : customedFunRelatedCodeInLoop) {
+                //     errs() << "codeFunRelatedInst111: " << *inst << "\n";
+                // }
                 errs() << "----customedFunRelatedCodeInLoop----\n";
                 // cal safeCheckCallInst, safeCheckInstsInLoopBody, allInstsToOneCallInstInLoopBody, 
                 // std::unordered_set<Instruction *> cmpInstRelated;
@@ -412,6 +348,7 @@ bool LoopsMovec::runOnModule(Module &M) {
 
                 // std::srand(std::time(0)); //seed
                 
+                //identify which safe checks need to be parallellized
                 for (auto body : loopBody) {
                     // errs() << "loopBody: " << *body << "\n";
                     // bool flag = false;
@@ -442,6 +379,7 @@ bool LoopsMovec::runOnModule(Module &M) {
 
 
 
+                // get brInst related instructions
                 // std::unordered_set<Instruction *> workListForCmpInstRelated(cmpInstRelated.begin(), cmpInstRelated.end());
                 std::unordered_set<Instruction *> workListForBrInstRelated(brInstRelated.begin(), brInstRelated.end());
                 // while (!workListForCmpInstRelated.empty()) {
@@ -497,6 +435,9 @@ bool LoopsMovec::runOnModule(Module &M) {
                 // }
                 
                 errs() << "^^^^^brInstRelate^^^^^\n";
+
+                //get safeCheck callInst related instructions
+                //TODO: need optimized
                 for (auto callInst : safecheckCallInst) {
                     std::set<Instruction *> safeCheckInsts;
                     // std::set<Instruction *> workList; // for %base.load call_metadata_load and so on
@@ -1320,11 +1261,7 @@ bool LoopsMovec::instHappensBefore(Instruction * inst, Instruction * final) {
                 flag = true;
             }
             if (final == &I) {
-                if (flag) {
-                    return true;
-                } else {
-                    return false;
-                }
+                return flag;
             }
         }
     }
