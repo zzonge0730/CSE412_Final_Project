@@ -992,7 +992,7 @@ const std::unordered_set<std::string> PDGAnalysis::externalThreadSafeFunctions {
 
 };
 
-AliasResult PDGAnalysis::doTheyAlias (PDG *pdg, Function &F, AliasAnalysis &AA, Value * instI, Value * instJ) {
+AliasAnalysis::AliasResult PDGAnalysis::doTheyAlias (PDG *pdg, Function &F, AliasAnalysis &AA, Value * instI, Value * instJ) {
     //query the llvm alias analysis
     switch (AA.alias(instI, instJ)) {
         case AliasAnalysis::NoAlias:
