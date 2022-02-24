@@ -253,16 +253,31 @@ uint32_t getSafeCheckCost(Instruction * callInst) {
                 cost = 57;
             } else if (funcName == "__softboundcets_metadata_store") {
                 cost = 66;
+            } else if (funcName == "_RV_check_dpv") {
+                cost = 62;
+            } else if (funcName == "_RV_check_dpv_ss") {
+                cost = 10;
+            } else if (funcName == "_RV_check_dpfv") {
+                cost = 58;
+            } else if (funcName == "_RV_check_dpc") {
+                cost = 25;
+            } else if (funcName == "_RV_check_dpc_ss") {
+                cost = 26;
+            } else if (funcName == "_RV_check_dpfc") {
+                cost = 21;
+            } else if (funcName == "_RV_pmd_tbl_lookup") {
+                cost = 67;
+            } else if (funcName.find("_RV_pmd_tbl_update_") != funcName.npos) {
+                cost = 128;
             } else {
                 cost = 10;
             }
-
         }
     }
     return cost;
 }
 uint32_t getSpawnableCost() {
-    return 1;
+    return 10;
 }
 uint32_t getOriginalCost(Instruction * start, Instruction * end) {
     uint32_t cost = 1;
@@ -276,11 +291,11 @@ uint32_t getOriginalCost(Instruction * start, Instruction * end) {
             }
             if (flag) {
                 if (CallInst * ci = dyn_cast<CallInst>(&inst)) {
-                    if (!IsSafeCheckCallForLoopFree(ci)) {
-                        cost += 20;
+                    if (!IsSafeCheckCallForMovec(ci)) {
+                        cost += 100;
                     }
                 } else {
-                    if (IsEmittingInst(inst)) ++cost;
+                    if (IsMemAccessInst(inst)) ++cost;
                 }
                 
             }
@@ -293,11 +308,11 @@ uint32_t getOriginalCost(Instruction * start, Instruction * end) {
             }
             if (flag) {
                 if (CallInst * ci = dyn_cast<CallInst>(&inst)) {
-                    if (!IsSafeCheckCallForLoopFree(ci)) {
-                        cost += 20;
+                    if (!IsSafeCheckCallForMovec(ci)) {
+                        cost += 100;
                     }
                 } else {
-                    if (IsEmittingInst(inst)) ++cost;
+                    if (IsMemAccessInst(inst)) ++cost;
                 }
 
             }
@@ -308,6 +323,19 @@ uint32_t getOriginalCost(Instruction * start, Instruction * end) {
         }
     }
     return cost;
+}
+
+Instruction * getNextInstruction(Instruction * I, BasicBlock *BB) {
+    Instruction * Next = nullptr;
+    for (BasicBlock::iterator BBit = BB->begin(), BBend = BB->end();
+        BBit != BBend; ++BBit) {
+        Next = &*BBit;
+        if (I == Next) {
+            Next = &*(++BBit);
+            break;
+        }
+    }
+    return Next;
 }
 
 // static std::set<std::string> SoftBoundCETSLibCalls {

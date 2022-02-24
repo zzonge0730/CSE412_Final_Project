@@ -799,7 +799,7 @@ bool LoopsMovec::runOnModule(Module &M) {
         //safecheck - safecheckRelatedCode - 
         //safechecks - Loc[xx, xx, xx]
         std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInNonLoopBody;
-        std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckCallInstJoinPoints;
+        std::unordered_map<Instruction *, Instruction *> safeCheckCallInstJoinPoint;
         std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsMoveRange;
         
         std::unordered_map<BasicBlock *, std::unordered_set<Instruction *>> safeCheckInNonLoopBB;
@@ -822,7 +822,7 @@ bool LoopsMovec::runOnModule(Module &M) {
         //get safecheck related codes , joinpoints and locs
         for (auto callInst : safeCheckCallInstInNonLoopBody) {
             std::set<Instruction *> safeCheckRelatedInsts;
-            std::set<Instruction *> joinpoints;
+            Instruction * joinpoint = nullptr;
             for (auto subedge : funcPDG->getEdges()) {
                 auto fromNodeSubT = subedge->getOutgoingNode()->getT();
                 auto toNodeSubT = subedge->getIncomingNode()->getT();
@@ -839,13 +839,22 @@ bool LoopsMovec::runOnModule(Module &M) {
                 if (cast<Instruction>(fromNodeSubT) == callInst &&
                 subedge->dataDepToString() == "RAW") {
                     if (fromNodeSubT != toNodeSubT) {
-                        joinpoints.insert(cast<Instruction>(toNodeSubT));
+                        Instruction * toInst = cast<Instruction>(toNodeSubT);
+                        if (joinpoint == nullptr) joinpoint = toInst; 
+                        else {
+                            //happens before check
+                            if (instHappensBefore(toInst, joinpoint)) {
+                                joinpoint = toInst;
+                            }
+                        }
+                        
+
                     }
                 }
             }
             
             safeCheckInstsInNonLoopBody[callInst] = safeCheckRelatedInsts;
-            safeCheckCallInstJoinPoints[callInst] = joinpoints;
+            safeCheckCallInstJoinPoint[callInst] = joinpoint;
 
             //joinpoints means the farthest location, if it is null, the join point is the last instruction of a function
             //find the the forward most location
@@ -875,102 +884,101 @@ bool LoopsMovec::runOnModule(Module &M) {
         //TODO: enumerate all tasks combinations for each basic block
         // calculate each combination cost
         // choose the min cost task combination and create the loop free task
+        for (auto pair : safeCheckInNonLoopBB) {
 
 
-
-
-        //create the loop free task, and set some info
-        for (BasicBlock& BB : F) {
-            if (allLoopBasicBlocks.count(&BB) > 0) continue;
-
-            Instruction * taskJoinPoint = nullptr;
-            std::unordered_set<Instruction * > safeCheckCodeForOneTask;
-
-            for (Instruction& I : BB) {
-                if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-                    if (IsSafeCheckCallForLoopFree(CI)) {
-                        if (taskJoinPoint == nullptr) {
-                            std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-                            if (joinpoints.size() == 0) {
-                                taskJoinPoint = BB.getTerminator();
-                            } else {
-                                bool flag = false;
-                                for (auto joinp : joinpoints) {
-                                    if (joinp->getParent() == &BB) {
-                                        taskJoinPoint = joinp;
-                                        flag = true;
-                                    }
-                                }
-                                if (!flag) taskJoinPoint = BB.getTerminator();
-                            }
-                            safeCheckCodeForOneTask.insert(&I);
-                        } else {
-                            if (instHappensBefore(&I, taskJoinPoint)) {
-                                std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-                                if (joinpoints.size() == 0) {
-                                    taskJoinPoint = BB.getTerminator();
-                                } else {
-                                    bool flag = false;
-                                    for (auto joinp : joinpoints) {
-                                        if (joinp->getParent() == &BB) {
-                                            if (!instHappensBefore(joinp, taskJoinPoint)) {
-                                                taskJoinPoint = joinp;
-                                            }
-                                            flag = true;
-                                        }
-                                    }
-                                    if (!flag) {
-                                        taskJoinPoint = BB.getTerminator();
-                                    }
-                                }
-                                safeCheckCodeForOneTask.insert(&I);
-                            } else {
-                                //a new task
-                                LoopFreeTask *loopFreeTask = new LoopFreeTask(id++, this->program);
-                                loopFreeTask->setSafeCheckCodes(safeCheckCodeForOneTask);
-                                loopFreeTask->setInfo( safeCheckInstsInNonLoopBody,
-                                safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
-                                loopFreeTask->setJoinPoint(taskJoinPoint);
-                                loopFreeTask->setTargetBB(&BB);
-                                loopFreeTask->setJoinFunc(joinFunc);
-                                loopFreeTasks.push_back(loopFreeTask);
-                                safeCheckCodeForOneTask.clear();
-
-                                std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-                                if (joinpoints.size() == 0) {
-                                    taskJoinPoint = BB.getTerminator();
-                                } else {
-                                    bool flag = false;
-                                    for (auto joinp : joinpoints) {
-                                        if (joinp->getParent() == &BB) {
-                                            if (!instHappensBefore(joinp, taskJoinPoint)) {
-                                                taskJoinPoint = joinp;
-                                            }
-                                            flag = true;
-                                        }
-                                    }
-                                    if (!flag) {
-                                        taskJoinPoint = BB.getTerminator();
-                                    }
-                                }
-                                safeCheckCodeForOneTask.insert(&I);
-                            }
-                        }
+            std::vector<Instruction*> vec;
+            vec.assign(pair.second.begin(), pair.second.end());
+            std::vector<std::vector<std::pair<Instruction*, Instruction*>>> vecvecPair;
+            //permutation all combinations and group two insts as one pair which can match the cost model to cal cost 
+            do {
+                std::vector<std::pair<Instruction*, Instruction*>> vp;
+                for (int i = 0; i < vec.size(); i += 2) {
+                    int j = i + 1;
+                    if (j < vec.size()) {
+                        vp.push_back(std::make_pair(vec[i], vec[j]));
+                    } else {
+                        vp.push_back(std::make_pair(vec[i], nullptr));
                     }
                 }
-            }
+                vecvecPair.push_back(vp);
+            } while (next_permutation(vec.begin(), vec.end()));
+            
+            uint32_t minCost = calBaselineCost(vec); // baseline no merge
+            std::vector<std::pair<Instruction*, Instruction*>> minCostPairVec = {};
+            //cal cost and choose the minimal cost pair vec
+            for (auto item : vecvecPair) {
+                uint32_t curCost = 0;
+                for (auto pair : item) {
+                    curCost += calCost(pair, safeCheckCallInstJoinPoint);
+                }
 
-            if (safeCheckCodeForOneTask.size() != 0) {
-                //a new task
-                LoopFreeTask *loopFreeTask = new LoopFreeTask(loopFreeId++, this->program);
-                loopFreeTask->setSafeCheckCodesForOneTask(safeCheckCodeForOneTask);
-                loopFreeTask->setInfo(safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
-                loopFreeTask->setTargetBB(&BB);
-                loopFreeTask->setJoinPoint(BB.getTerminator());
-                loopFreeTask->setJoinFunc(joinFunc);
-                loopFreeTasks.push_back(loopFreeTask);
+                if (curCost < minCost) {
+                    minCost = curCost;
+                    minCostPairVec = item;
+                }
             }
+            // A B C D E
+            // AB means A merges back to B
+            // BA means B merges forward to A
+            //create loop free task
+            //new lookfreetask object
+            //set safecheck codes
+            //set join points
+            //
+            if (minCostPairVec.empty()) {//use baseline version
+                for (int i = 0; i < vec.size(); i++) {
+                    Instruction * curInst = vec[i];
+                    std::vector<Instruction*> instSet{curInst};
+                    LoopFreeTask * lftask = new LoopFreeTask(loopFreeId++, this->program);
+                    lftask->setSafeCheckCodesForOneTask(instSet);
+                    
+                    Instruction * jpt = safeCheckCallInstJoinPoint.at(curInst);
+                    
+                    lftask->setJoinPoint(jpt);
+                    
+                    std::set<Instruction*> relatedInsts = safeCheckInstsInNonLoopBody.at(curInst);
+                    lftask->setInfo(relatedInsts);
+                    
+                    lftask->setJoinFunc(joinFunc);
 
+                    loopFreeTasks.push_back(lftask);
+                }
+            } else {//use optimized version
+                for (int i = 0; i < minCostPairVec.size(); i++) {
+                    std::pair<Instruction*, Instruction*> curInstPair = minCostPairVec[i];
+                    Instruction * instFirst = curInstPair.first;
+                    Instruction * instSecond = curInstPair.second;
+                    
+                    std::vector<Instruction*> instSet{instFirst, instSecond};
+                    LoopFreeTask * lftasks = new LoopFreeTask(loopFreeId++, this->program);
+                    lftasks->setSafeCheckCodesForOneTask(instSet);
+                    
+                    Instruction * jpF = safeCheckCallInstJoinPoint.at(instFirst);
+                    Instruction * jpS = safeCheckCallInstJoinPoint.at(instSecond);
+                    if (instHappensBefore(jpF, jpS)) {
+                        lftasks->setJoinPoint(jpF);
+                    } else {
+                        lftasks->setJoinPoint(jpS);
+                    }
+
+                    std::set<Instruction*> relatedInstsFirst = safeCheckInstsInNonLoopBody.at(instFirst);
+                    std::set<Instruction*> relatedInstsSecond = safeCheckInstsInNonLoopBody.at(instSecond);
+                    relatedInstsFirst.insert(relatedInstsSecond.begin(), relatedInstsSecond.end());
+                    lftasks->setInfo(relatedInstsFirst);
+                    
+                    lftasks->setJoinFunc(joinFunc);
+                    
+                    if (instHappensBefore(instFirst, instSecond)) {
+                        lftasks->setMergeDirection(1);
+                    } else {
+                        lftasks->setMergeDirection(2);
+                    }
+                    
+
+                    loopFreeTasks.push_back(lftasks);
+                }
+            }
         }
 
     }
@@ -1653,3 +1661,138 @@ bool LoopsMovec::isTheMovecLibraryFunction(Function * libF) {
     }
     return false;
 }
+
+uint32_t LoopsMovec::calBaselineCost(std::vector<Instruction*> safecheckInsts) {
+    uint32_t res = 0;
+    
+    for (int i = 0; i < safecheckInsts.size(); i++) {
+        Instruction * curInst = safecheckInsts[i];
+        BasicBlock * curBB = curInst->getParent();
+
+        uint32_t count = 0;
+        uint32_t ts1 = 0;
+        for (Instruction &inst : *curBB) {
+            if (curInst == &inst) {
+                ts1 = count;
+            }
+            if (CallInst * ci = dyn_cast<CallInst>(&inst)) {
+                if (!IsSafeCheckCallForMovec(ci)) count += 100; //average function cost
+            } else {
+                if (IsMemAccessInst(inst)) {
+                    count++;
+                }
+            }
+        }
+        res += std::max(count, ts1 + getSafeCheckCost(curInst) + getSpawnableCost());
+    }
+
+    return res;
+}
+
+
+uint32_t LoopsMovec::calCost(std::pair<Instruction*, Instruction*> pair, std::unordered_map<Instruction *, Instruction *> safeCheckCallInstJoinPoint) {
+    uint32_t res = 0;
+    Instruction * leftInst = pair.first;
+    Instruction * rightInst = pair.second;
+
+    Instruction * leftInstJP = safeCheckCallInstJoinPoint.at(leftInst);
+    Instruction * rightInstJP = safeCheckCallInstJoinPoint.at(rightInst);
+
+    uint8_t model = 5;
+    //judge which cost model to cal
+    Instruction * leftInstNext = getNextInstruction(leftInst, leftInst->getParent());
+    Instruction * rightInstNext = getNextInstruction(rightInst, rightInst->getParent());
+    Instruction * leftInstJPNext = getNextInstruction(leftInstJP, leftInstJP->getParent());
+    Instruction * rightInstJPNext = getNextInstruction(rightInstJP, rightInstJP->getParent());
+    if (leftInstNext != rightInst && rightInstNext != leftInst) { // a, d , e
+        if (leftInstJPNext != rightInstJP && rightInstJPNext != leftInstJP && leftInstJP != rightInstJP) {
+            if (instHappensBefore(leftInstJP, rightInstJP)) {
+                //leftJP  rightJP
+                //d
+                if (instHappensBefore(leftInst, rightInst)) {
+                    //leftInst  rightInst
+                    uint32_t ts1 = getOriginalCost(leftInst, rightInst);
+                    uint32_t ts2 = getOriginalCost(rightInst, leftInstJP);
+                    uint32_t ts3 = getOriginalCost(leftInstJP, rightInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(tm1px + ts3, ts1 + std::max(ts2 + ts3, tm2px));
+                } else {
+                    // rightInst leftInst , 
+                    //another e model, reverse m1 and m2
+                    uint32_t ts1 = getOriginalCost(rightInst, leftInst);
+                    uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
+                    uint32_t ts3 = getOriginalCost(leftInstJP, rightInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(tm2px, ts1 + ts3 + std::max(ts2, tm1px));
+                }
+                
+            } else {//rightJP leftJP 
+                //e
+                if (instHappensBefore(leftInst, rightInst)) {
+                    //left  right
+                    uint32_t ts1 = getOriginalCost(leftInst, rightInst);
+                    uint32_t ts2 = getOriginalCost(rightInst, rightInstJP);
+                    uint32_t ts3 = getOriginalCost(rightInstJP, leftInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(tm1px, ts1 + ts3 + std::max(ts2, tm2px));
+
+                } else {
+                    //right left 
+                    //another d model, reverse m1 and m2
+                    uint32_t ts1 = getOriginalCost(rightInst, leftInst);
+                    uint32_t ts2 = getOriginalCost(leftInst, rightInstJP);
+                    uint32_t ts3 = getOriginalCost(rightInstJP, leftInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(ts3 + tm2px, ts1 + std::max(ts2 + ts3, tm1px));
+                }
+            }
+        } else {
+            //a
+            if (instHappensBefore(leftInst, rightInst)) {
+                uint32_t ts1 = getOriginalCost(leftInst, rightInst);
+                uint32_t ts2 = getOriginalCost(rightInst, rightInstJP);
+                uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                res = std::max(tm1px, ts1 + std::max(ts2, tm2px));
+
+            } else {
+                uint32_t ts1 = getOriginalCost(rightInst, leftInst);
+                uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
+                uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                res = std::max(tm2px, ts1 + std::max(ts1, tm1px));
+            }
+        }
+    } else { // b, c
+        if (leftInstJPNext != rightInstJP && rightInstJPNext != leftInstJP && leftInstJP != rightInstJP) {
+            //b
+            
+            if (instHappensBefore(leftInstJP, rightInstJP)) {
+                uint32_t ts2 = getOriginalCost(leftInstJP, rightInstJP);
+                uint32_t ts1 = getOriginalCost(leftInst, leftInstJP);
+                uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                res = std::max(ts2 + std::max(ts1, tm1px), tm2px);
+            } else {
+                uint32_t ts2 = getOriginalCost(rightInstJP, leftInstJP);
+                uint32_t ts1 = getOriginalCost(rightInst, rightInstJP);
+                uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                res = std::max(ts2 + std::max(ts1, tm2px), tm1px);
+            }
+        } else {
+            //c
+            uint32_t ts1 = getOriginalCost(leftInst, leftInstJP);
+            uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+            uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+            res = tm1px >= ts1 ? std::max(tm1px, ts1) : std::max(ts1, tm2px);
+        }
+    }
+
+    return res;
+}
+

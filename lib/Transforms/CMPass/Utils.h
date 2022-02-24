@@ -32,6 +32,7 @@ uint32_t getSafeCheckCost(Instruction * callInst);
 uint32_t getSpawnableCost();
 uint32_t getOriginalCost(Instruction * start, Instruction * end);
 bool IsSafeCheckCallForLoopFree(CallInst *CI);
+Instruction * getNextInstruction(Instruction * I, BasicBlock *BB);
 
 // template<typename T, typename... Args>
 // std::unique_ptr<T> make_unique(Args&&... args) {

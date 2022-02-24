@@ -4,147 +4,50 @@ LoopFreeTask::LoopFreeTask(uint32_t id, Module * m) : loopFreeSeed{std::random_d
     this->ID = id;
     this->M = m;
     this->subID = 0;
+    this->mergedirection = 0;
 }
 
-void LoopFreeTask::setSafeCheckCodesForOneTask(std::unordered_set<Instruction *> insts) {
+void LoopFreeTask::setSafeCheckCodesForOneTask(std::vector<Instruction *> insts) {
     this->safeCheckCodeForOneTask = insts;
 }
 
-void LoopFreeTask::setInfo(std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckBody, std::unordered_map<Instruction *, std::set<Instruction *>> joinPoints,
-std::unordered_map<Instruction *, std::set<Instruction *>> range) {
+void LoopFreeTask::setInfo(std::set<Instruction *> safeCheckBody) {
     this->safeCheckInstsInNonLoopBody = safeCheckBody;
-    this->safeCheckCallInstJoinPoints = joinPoints;
-    this->safeCheckInstsMoveRange = range;
 }
 
 void LoopFreeTask::setJoinPoint(Instruction * taskJP) {
     this->taskJoinPoint = taskJP;
 }
 
-void LoopFreeTask::setTargetBB(BasicBlock * BB) {
-    this->targetBB = BB;
-}
-
-std::vector<Instruction *> LoopFreeTask::enumerateAndChooseMax() {
-    //enumerate all combination
-    std::vector<std::vector<Instruction *>> lastRes;
-
-    std::vector<std::vector<Instruction *>> input;
-
-    std::vector<Instruction *> res;
-    if (this->safeCheckCodeForOneTask.size() == 0) return res;
-
-    
-
-    //construct input 
-    std::vector<Instruction *> safeCheckVec;
-    for (auto call : this->safeCheckCodeForOneTask) {
-        std::vector<Instruction *> locs;
-        std::set<Instruction *> range = this->safeCheckInstsMoveRange.at(call);
-        for (auto loc : range) {
-            locs.push_back(loc);
-        }
-
-        input.push_back(locs);
-        safeCheckVec.push_back(call);
-    }
-    this->safeCheckVector = safeCheckVec;
-    if (this->safeCheckCodeForOneTask.size() == 1) {
-        for (auto item : input[0]) {
-            std::vector<Instruction *> tmp;
-            tmp.push_back(item);
-            lastRes.push_back(tmp);
-        }
-        // for (auto loc : range) {
-        //     uint32_t scCost = getSafeCheckCost(inst);
-        //     uint32_t oCost = getOriginalCost(loc, this->taskJoinPoint);
-        //     uint32_t profit = scCost > oCost? oCost - getSpawnableCost() : scCost - getSpawnableCost();
-        //     if (profit > maxprofit) {
-        //         maxprofit = profit;
-        //         res[0] = loc;
-        //     }
-        // }
-        // return res;
-    } else {
-        for (auto item : input[0]) {
-            std::vector<Instruction *> tmp;
-            tmp.push_back(item);
-            lastRes.push_back(tmp);
-        }
-
-        for (int i = 1; i < input.size(); i++) {
-            std::vector<Instruction *> right = input[i];
-
-            //join lastRes with right
-            std::vector<std::vector<Instruction *>> tmpLastRes;
-            for (auto vec : lastRes) {
-                for (auto item : right) {
-                    std::vector<Instruction *> tmpVec(vec);
-                    tmpVec.push_back(item);
-                    tmpLastRes.push_back(tmpVec);
-                }
-            }
-
-            lastRes = tmpLastRes;
-        }
-    }
-
-    //choose the max profit
-    uint32_t maxprofit = 0;
-    for (int i = 0 ; i < lastRes.size(); i++) { // [loc1, loc2, ]
-        std::vector<Instruction *> vec = lastRes[i];
-        uint32_t profit = 0;
-        Instruction * lastLoc = nullptr;
-        for (int j = 0; j < vec.size(); j++) { // loc
-            Instruction * loc = vec[j];
-            uint32_t scCost = getSafeCheckCost(safeCheckVec[j]);
-            uint32_t oCost = getOriginalCost(loc, this->taskJoinPoint);
-            
-            profit += scCost > oCost? oCost - getSpawnableCost() : scCost - getSpawnableCost();
-            if (lastLoc == loc) {
-                profit += getSpawnableCost();
-            } else {
-                lastLoc = loc;
-            }
-        }
-
-        if (profit > maxprofit) {
-            maxprofit = profit;
-            res = vec;
-        }
-    }
-
-    return res;
-
-}
 
 void LoopFreeTask::transform() {
-    std::vector<Instruction *> maxProfitRes = this->enumerateAndChooseMax();
-    if (maxProfitRes.size() == 0) return;
 
-    Instruction * lastLoc = nullptr;
-    std::vector<Instruction *> groupedSafeChecks;
-    for (int i = 0; i < maxProfitRes.size(); i++) {
-        Instruction * loc = maxProfitRes[i];
-        if (lastLoc == nullptr) {
-            lastLoc = loc;
-            groupedSafeChecks.push_back(this->safeCheckVector[i]);
-        } else {
-            if (lastLoc == loc) { // can be merged
-                //
-                groupedSafeChecks.push_back(this->safeCheckVector[i]);
-            } else {
-                SafeCheckTobeMerged(std::make_pair(groupedSafeChecks, loc));
-                groupedSafeChecks.clear();
-                lastLoc = loc;
-                groupedSafeChecks.push_back(this->safeCheckVector[i]);
-            }
-        }
-    }
-    if (groupedSafeChecks.size() != 0) {
-        SafeCheckTobeMerged(std::make_pair(groupedSafeChecks, this->safeCheckVector.back()));
-    }
+    // if (maxProfitRes.size() == 0) return;
 
+    // Instruction * lastLoc = nullptr;
+    // std::vector<Instruction *> groupedSafeChecks;
+    // for (int i = 0; i < maxProfitRes.size(); i++) {
+    //     Instruction * loc = maxProfitRes[i];
+    //     if (lastLoc == nullptr) {
+    //         lastLoc = loc;
+    //         groupedSafeChecks.push_back(this->safeCheckVector[i]);
+    //     } else {
+    //         if (lastLoc == loc) { // can be merged
+    //             //
+    //             groupedSafeChecks.push_back(this->safeCheckVector[i]);
+    //         } else {
+    //             SafeCheckTobeMerged(std::make_pair(groupedSafeChecks, loc));
+    //             groupedSafeChecks.clear();
+    //             lastLoc = loc;
+    //             groupedSafeChecks.push_back(this->safeCheckVector[i]);
+    //         }
+    //     }
+    // }
+    // if (groupedSafeChecks.size() != 0) {
+    //     SafeCheckTobeMerged(std::make_pair(groupedSafeChecks, this->safeCheckVector.back()));
+    // }
+
+    SafeCheckTobeMerged();
     
 }
 
@@ -158,10 +61,16 @@ void LoopFreeTask::eraseSafeCheckCodes() {
 
 }
 
-void SafeCheckTobeMerged(std::pair<std::vector<Instruction *>, Instruction *> groupedSafeCheckAndLocToInsert) {
+void LoopFreeTask::SafeCheckTobeMerged() {
     LLVMContext& ctx = this->M->getContext();
-    std::vector<Instruction *> checksGroup = groupedSafeCheckAndLocToInsert.first;
-    Instruction * locToInsertBefore = groupedSafeCheckAndLocToInsert.second;
+    std::vector<Instruction *> checksGroup = this->safeCheckCodeForOneTask;
+    Instruction * locToInsertBefore = nullptr;
+    if (this->mergedirection == 0) {
+        locToInsertBefore = checksGroup[0];
+    } else {
+        locToInsertBefore = checksGroup[1];
+    }
+    
 
     std::vector<Type *> wrapperFuncArgs;
     std::vector<Function *> checkFuncVec;
@@ -285,7 +194,7 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
     LLVMContext& ctx = this->M->getContext();
     Type * voidStarTy = PointerType::getUnqual(Type::getInt8Ty(ctx));
 
-    std::vector<Value *> args{ConstantInt::get(Type::getInt32Ty(ctx), std::uniform_int_distribution<uint32_t>{}(this->loopSeed)), wrapperFunc};
+    std::vector<Value *> args{ConstantInt::get(Type::getInt32Ty(ctx), std::uniform_int_distribution<uint32_t>{}(this->loopFreeSeed)), wrapperFunc};
 
     for (int ind = 0; ind < checksGroup.size(); ind++) {
         CallInst * curCI = cast<CallInst>(checksGroup[ind]);
@@ -307,3 +216,6 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
     return args;
 }
 
+void LoopFreeTask::setMergeDirection(int direction) {
+    this->mergedirection = direction;
+}
