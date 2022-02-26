@@ -325,6 +325,21 @@ uint32_t getOriginalCost(Instruction * start, Instruction * end) {
     return cost;
 }
 
+bool instHappensBefore(Instruction * inst, Instruction * final) {
+    Function * parentFunc = final->getParent()->getParent();
+    bool flag = false;
+    for (BasicBlock& BB : *parentFunc) {
+        for (Instruction& I : BB) {
+            if (inst == &I) {
+                flag = true;
+            }
+            if (final == &I) {
+                return flag;
+            }
+        }
+    }
+}
+
 Instruction * getNextInstruction(Instruction * I, BasicBlock *BB) {
     Instruction * Next = nullptr;
     for (BasicBlock::iterator BBit = BB->begin(), BBend = BB->end();

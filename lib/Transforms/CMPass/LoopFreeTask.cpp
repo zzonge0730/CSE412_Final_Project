@@ -19,6 +19,9 @@ void LoopFreeTask::setJoinPoint(Instruction * taskJP) {
     this->taskJoinPoint = taskJP;
 }
 
+void LoopFreeTask::setJoinFunc(Constant * joinF) {
+    this->joinFunc = joinF;
+}
 
 void LoopFreeTask::transform() {
 
@@ -54,18 +57,121 @@ void LoopFreeTask::transform() {
 void LoopFreeTask::eraseSafeCheckCodes() {
     if (this->safeCheckCodeForOneTask.size() == 0) return;
 
-    //erase safeCheckCodeForOneTask
+    // //erase safeCheckCodeForOneTask
+    // for (auto inst : this->safeCheckCodeForOneTask) {
+    //     inst->eraseFromParent();
+    // }
+    
+    //adjust data flow for movec, before earse safecheck inst
+    //get all instruction used by safechecks, for movec,; no such tedious work for softboundcets
+    for (auto check : this->safeCheckCodeForOneTask) {
+        if (CallInst * CI = dyn_cast<CallInst>(check) ) {
+            StringRef funcName = CI->getCalledFunction()->getName();
+            Instruction * from = nullptr;
+            ConstantInt * subscript = nullptr;
+            if (funcName.equals("_RV_check_dpv")) {
+                from = dyn_cast<Instruction>(CI->getArgOperand(1));
+
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                            auto opV = (*opIt).get();
+
+                            if (auto opI = dyn_cast<Instruction>(opV) ) {
+                                if (opI == CI) {
+                                    (*opIt).set(from);
+                                }
+                                
+                            }
+                    }
+                }
+            } else if (funcName.equals("_RV_check_dpv_ss")) {
+                subscript = dyn_cast<ConstantInt>(CI->getArgOperand(2));
+
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                            auto opV = (*opIt).get();
+
+                            if (auto opI = dyn_cast<Instruction>(opV) ) {
+                                if (opI == CI) {
+                                    (*opIt).set(subscript);
+                                }
+                                
+                            }
+                    }
+                }
+            } else if (funcName.equals("_RV_check_dpc")) {
+                from = dyn_cast<Instruction>(CI->getArgOperand(2));
+
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                            auto opV = (*opIt).get();
+
+                            if (auto opI = dyn_cast<Instruction>(opV) ) {
+                                if (opI == CI) {
+                                    (*opIt).set(from);
+                                }
+                                
+                            }
+                    }
+                }
+            } else if (funcName.equals("_RV_check_dpc_ss")) {
+                subscript = dyn_cast<ConstantInt>(CI->getArgOperand(3));
+
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                            auto opV = (*opIt).get();
+
+                            if (auto opI = dyn_cast<Instruction>(opV) ) {
+                                if (opI == CI) {
+                                    (*opIt).set(subscript);
+                                }
+                                
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+
     for (auto inst : this->safeCheckCodeForOneTask) {
         inst->eraseFromParent();
     }
-
 }
 
 void LoopFreeTask::SafeCheckTobeMerged() {
     LLVMContext& ctx = this->M->getContext();
     std::vector<Instruction *> checksGroup = this->safeCheckCodeForOneTask;
     Instruction * locToInsertBefore = nullptr;
-    if (this->mergedirection == 0) {
+    if (this->mergedirection == 0 || this->mergedirection == 2) {
         locToInsertBefore = checksGroup[0];
     } else {
         locToInsertBefore = checksGroup[1];
@@ -147,6 +253,12 @@ void LoopFreeTask::SafeCheckTobeMerged() {
     
     //put join points
     Value * id = needArgs[0]; 
+
+    //corner case 
+    //if taskjoinpoint happens before safecheck task, reset the last bb instruction as jointpoint
+    if (instHappensBefore(this->taskJoinPoint, locToInsertBefore)) {
+        this->taskJoinPoint = &(*(--locToInsertBefore->getParent()->end()));//the second last
+    }
     CallInst::Create(this->joinFunc, id, "", this->taskJoinPoint);
 
 
@@ -209,7 +321,7 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
                 new StoreInst(arg, castArg, curCI);
             }
             BitCastInst * bcInst = new BitCastInst(castArg, voidStarTy, "zybc_", curCI);
-
+            // errs() << "-215-bcInst:" << *bcInst << "\n";
             args.push_back(bcInst);
         }
     }

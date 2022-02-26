@@ -65,7 +65,6 @@ private:
     Value * envIndexForExitVariable,
     std::vector<BasicBlock*>& loopExitBlocks);
 
-    bool instHappensBefore(Instruction * inst, Instruction * final);
     Constant * generateJoinFunc();
     static bool isTheMovecLibraryFunction(Function * libF);
     static const std::unordered_set<std::string> movecLibFunction;
