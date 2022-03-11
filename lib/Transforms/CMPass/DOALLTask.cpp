@@ -1390,6 +1390,7 @@ void DOALLTask::splitLoop() {
         errs() << ">>>wrong ctor in ctors..., wrong args size...\n";
     }
 
+    
     CallInst::Create(ctorIt->second, needArgs, "", this->whereToInsertFunc);
     
     //put join points
@@ -1397,7 +1398,14 @@ void DOALLTask::splitLoop() {
     for (auto *point : this->joinPoints) {
         CallInst::Create(this->joinFunc, id, "", point);
     }
-
+    
+    #if 0
+    //used for evalution
+    // Value * id = needArgs[0]; 
+    Type *i32_type = llvm::IntegerType::getInt32Ty(ctx);
+    Constant *i32_val = llvm::ConstantInt::get(i32_type, 0, true);
+    CallInst::Create(this->joinFunc, i32_val, "", this->whereToInsertFunc);
+    #endif
     // errs() << "Transform module: \n";
     // errs() << *this->M << "\n";
 }

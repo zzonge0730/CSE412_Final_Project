@@ -1,5 +1,5 @@
 #include "PDG.h"
-
+#include "Utils.h"
 #include <algorithm>
 #include <assert.h>
 
@@ -10,6 +10,7 @@ PDG::PDG(Module &M) {
     // Function* entryFunc = nullptr;
     for (auto &F : M) {
         if (F.isDeclaration()) continue;
+        if (movecLibFunction.count(F.getName())) continue;
         //filter movec lib function  and movec wrapperfunction
         // StringRef funcName = F.getName();
         // if (funcName.startswith("_RV_") && (!funcName.equals("_RV_main"))) {
@@ -23,8 +24,8 @@ PDG::PDG(Module &M) {
     //"main" for asan and ubsan
     //"softboundcets_pseudo_main" for softboundcets
     //"_RV_main" for movec
-    // auto mainF = M.getFunction("softboundcets_pseudo_main");
-    auto mainF = M.getFunction("main");
+    auto mainF = M.getFunction("softboundcets_pseudo_main");
+    // auto mainF = M.getFunction("main");
 
 
     assert(mainF != nullptr);

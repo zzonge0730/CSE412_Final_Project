@@ -1,42 +1,59 @@
 #include "Utils.h"
 
-#include <string>
-#include <set>
+
 
 using namespace llvm;
 
 bool IsSafeCheckCall(CallInst *CI){
     if(CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
-        if(callName.startswith("__softboundcets") || 
-        //callName.startswith("softboundcets") ||
-        callName.startswith("__asan_") || 
-        callName.startswith("__ubsan_")){
-            if (callName.equals("__softboundcets_init") ||
-                callName.equals("__softboundcets_dummy") ||
-                callName.equals("__softboundcets_abort") ||
-                // callName.equals("__softboundcets_metadata_load") ||
-                // callName.equals("__softboundcets_temporal_load_dereference_check") ||
-                // callName.equals("__softboundcets_spatial_load_dereference_check") ||
-                // callName.equals("__softboundcets_temporal_store_dereference_check") ||
-                // callName.equals("__softboundcets_spatial_store_dereference_check") ||
-                callName.equals("__softboundcets_stack_memory_allocation") ||
-                callName.equals("__softboundcets_load_base_shadow_stack") ||
-                callName.equals("__softboundcets_load_bound_shadow_stack") ||
-                callName.equals("__softboundcets_load_key_shadow_stack") ||
-                callName.equals("__softboundcets_load_lock_shadow_stack") ||
-                callName.equals("__softboundcets_get_global_lock") ||
-                // callName.equals("__softboundcets_metadata_store") ||
-                callName.equals("__softboundcets_allocate_shadow_stack_space") ||
-                callName.equals("__softboundcets_store_base_shadow_stack") ||
-                callName.equals("__softboundcets_store_bound_shadow_stack") ||
-                callName.equals("__softboundcets_store_key_shadow_stack") ||
-                callName.equals("__softboundcets_store_lock_shadow_stack") ||
-                callName.equals("__softboundcets_deallocate_shadow_stack_space") ||
-                callName.equals("__softboundcets_stack_memory_deallocation")
-            ){
-                return false;
-            }
+        if(callName.equals("__softboundcets_metadata_load") ||
+        callName.equals("__softboundcets_temporal_load_dereference_check") ||
+        callName.equals("__softboundcets_spatial_load_dereference_check") ||
+        callName.equals("__softboundcets_temporal_store_dereference_check") ||
+        callName.equals("__softboundcets_spatial_store_dereference_check"))
+        {
+        // callName.equals("__softboundcets_metadata_store")){
+            // if (callName.equals("__softboundcets_init") ||
+            //     callName.equals("__softboundcets_dummy") ||
+            //     callName.equals("__softboundcets_abort") ||
+            //     callName.equals("__softboundcets_printf") ||
+            //     callName.equals("__softboundcets_introspect_metadata") ||
+            //     callName.equals("__softboundcets_copy_metadata") ||
+            //     callName.equals("__softboundcets_metadata_map") ||
+            //     // callName.equals("__softboundcets_metadata_load") ||
+            //     // callName.equals("__softboundcets_temporal_load_dereference_check") ||
+            //     // callName.equals("__softboundcets_spatial_load_dereference_check") ||
+            //     // callName.equals("__softboundcets_temporal_store_dereference_check") ||
+            //     // callName.equals("__softboundcets_spatial_store_dereference_check") ||
+            //     callName.equals("__softboundcets_stack_memory_allocation") ||
+            //     callName.equals("__softboundcets_load_base_shadow_stack") ||
+            //     callName.equals("__softboundcets_load_bound_shadow_stack") ||
+            //     callName.equals("__softboundcets_load_key_shadow_stack") ||
+            //     callName.equals("__softboundcets_load_lock_shadow_stack") ||
+            //     callName.equals("__softboundcets_get_global_lock") ||
+            //     // callName.equals("__softboundcets_metadata_store") ||
+            //     callName.equals("__softboundcets_allocate_shadow_stack_space") ||
+            //     callName.equals("__softboundcets_store_base_shadow_stack") ||
+            //     callName.equals("__softboundcets_store_bound_shadow_stack") ||
+            //     callName.equals("__softboundcets_store_key_shadow_stack") ||
+            //     callName.equals("__softboundcets_store_lock_shadow_stack") ||
+            //     callName.equals("__softboundcets_deallocate_shadow_stack_space") ||
+            //     callName.equals("__softboundcets_stack_memory_deallocation")
+            // ){
+            //     return false;
+            // }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsSafeCheckCallStore(CallInst *CI){
+    if(CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if(callName.equals("__softboundcets_metadata_store"))
+        {
             return true;
         }
     }
@@ -352,6 +369,8 @@ Instruction * getNextInstruction(Instruction * I, BasicBlock *BB) {
     }
     return Next;
 }
+
+
 
 // static std::set<std::string> SoftBoundCETSLibCalls {
 //     "softboundcets_setenv",

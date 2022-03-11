@@ -246,6 +246,7 @@ void PDGAnalysis::constructEdgesFromAliases(PDG *pdg, Module &M) {
     for (auto &F : M) {
         //check if the function has a body
         if (F.empty()) continue;
+        if (movecLibFunction.count(F.getName())) continue;
         // errs() << "--PDGAnalysis-222: " << F.getName() << "\n";
         //add the edges to the PDG
         constructEdgesFromAliasesForFunction(pdg, F);
@@ -298,6 +299,7 @@ void PDGAnalysis::constructEdgesFromControl(PDG *pdg, Module &M) {
     for (auto &F : M) {
         //fetch the next function with a body
         if (F.empty()) continue;
+        if (movecLibFunction.count(F.getName())) continue;
         //errs() << "--PDGAnalysis-277: " << F.getName() << "\n";
         //compute the control dependences of the function based on its post-dominator tree
         this->constructEdgesFromControlForFunction(pdg, F);
@@ -626,12 +628,12 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
     //TODO: add SVF alias analysis
 
     //for softboundcets --- 1
-    // bool specialRAW = false;
+    bool specialRAW = false;
     // // errs() << "611: call: " << *call << ", NumOfArg: " << call->getNumArgOperands() <<"\n";
-    // for (int i = 0; i < call->getNumArgOperands(); i++) {
-    //     // errs() << "Arg-" << i << " is: " << *(call->getArgOperand(i)) << "\n";
-    //     if (call->getArgOperand(i) == load->getOperand(0)) specialRAW = true;
-    // }
+    for (int i = 0; i < call->getNumArgOperands(); i++) {
+        // errs() << "Arg-" << i << " is: " << *(call->getArgOperand(i)) << "\n";
+        if (call->getArgOperand(i) == load->getOperand(0)) specialRAW = true;
+    }
     // errs() << "611: load: " << *load << ", 0Op: " << *(load->getOperand(0)) << "\n";
     // errs() << "addEdgeFromCall: " << addEdgeFromCall << "\n";
     //there is a dependence
@@ -645,9 +647,9 @@ void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysi
         }
     }
     //for softboundcets --- 1
-    // if (specialRAW) {
-    //     pdg->addEdge((Value *)call, (Value *)load)->setMemMustType(true, true, DG_DATA_RAW);
-    // }
+    if (specialRAW) {
+        pdg->addEdge((Value *)call, (Value *)load)->setMemMustType(true, true, DG_DATA_RAW);
+    }
 }
 
 void PDGAnalysis::addEdgeFromFunctionModRef(PDG * pdg, Function &F, AliasAnalysis &AA, CallInst *call, CallInst *otherCall) {

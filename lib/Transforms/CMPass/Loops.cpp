@@ -64,12 +64,7 @@ bool Loops::runOnModule(Module &M) {
         auto loopFunction = loopS->getFunction();
         auto loopHeader = loopS->getHeader();
         errs() << "printHeader& : " << &loopHeader << "\n";
-
         std::string prefix{"Parallelizer:    "};
-        // for (auto i = 1; i < treeLevel; i++) {
-        //     prefix.append("    ");
-        // }
-
         errs() << prefix << "ID: " << loopI << "(" << ")\n";
         errs() << prefix << "    Function: " << loopFunction->getName() << "\n";
         errs() << prefix << "    Loop: " << *loopHeader->getFirstNonPHI() << "\n";
@@ -207,7 +202,7 @@ bool Loops::runOnModule(Module &M) {
                 for (BasicBlock& BB : *loopHeader->getParent()) {
                     for (Instruction& inst : BB) {
                         if (isa<ReturnInst>(&inst)) {    
-                            joinPoints.insert(&inst);
+                            joinPoints.insert(&(*(BB.getFirstInsertionPt())));
                         }
                     }
                 }
@@ -233,20 +228,36 @@ bool Loops::runOnModule(Module &M) {
                     // and need further alloca a block of extra memory and init it
                     Value * liveIn = loop->loopEnviroment->producerAT(envIndex);
                     // for (auto subedge : wholePdg->getEdges()) {
-                    for (auto subedge : loopFuncPDG->getEdges()) {
-                        auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                        auto toNodeSubT = subedge->getIncomingNode()->getT();
+                    //old
+                    // for (auto subedge : loopFuncPDG->getEdges()) {
+                    //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                    //     auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-                        if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(liveIn) ) {
-                            if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                                if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && ls->isIncluded(cast<Instruction>(toNodeSubT))) {
-                                    // means this liveInVar need alloca memory
-                                    errs() << "liveIn: " << *liveIn << " need alloca memory.\n";
+                    //     if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(liveIn) ) {
+                    //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
+                    //             if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && ls->isIncluded(cast<Instruction>(toNodeSubT))) {
+                    //                 // means this liveInVar need alloca memory
+                    //                 errs() << "liveIn: " << *liveIn << " need alloca memory.\n";
+                    //                 liveInInitVal[liveIn] = nullptr; 
+                    //             }
+                    //         }
+                    //     }
+                    // }
+
+                    //new: more effective way to get the needed val, instead of naively traverse
+                    //fetch the DGNode
+                    auto fromNode = loopFuncPDG->fetchNode(liveIn);
+                    if (fromNode != nullptr) {
+                        for (auto &edge : fromNode->getOutgoingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString()=="RAW") {
+                                auto toNode = cast<Instruction>(edge->getIncomingNode()->getT());
+                                if (isa<StoreInst>(toNode) && ls->isIncluded(toNode)) {
                                     liveInInitVal[liveIn] = nullptr; 
                                 }
                             }
                         }
                     }
+
 
                     if (isa<BitCastInst>(cast<Instruction>(liveIn))) {
                         bitcastLiveInVarRelated[liveIn] = {};
@@ -255,26 +266,53 @@ bool Loops::runOnModule(Module &M) {
                 
                 for (auto pair : liveInInitVal) {
                     StoreInst * theLastStoreInst = nullptr;
+                    //old
                     // for (auto subedge : wholePdg->getEdges()) {
-                    for (auto subedge : loopFuncPDG->getEdges()) {    
-                        auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                        auto toNodeSubT = subedge->getIncomingNode()->getT();
+                    // for (auto subedge : loopFuncPDG->getEdges()) {    
+                    //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                    //     auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-                        if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(pair.first) ) {
-                            if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                                if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && !ls->isIncluded(cast<Instruction>(toNodeSubT))) { // 
-                                    // means this liveInVar need init value
-                                    Value * storeVal = cast<StoreInst>(toNodeSubT)->getOperand(0);
-                                    // find the last toNodeSubT happens before wheretoInsertFunc
-                                    // and not in loopLatch BB
-                                    if (instHappensBefore(cast<StoreInst>(toNodeSubT), whereToInsertFunc) && 
-                                    loopPreHeaders.count(cast<StoreInst>(toNodeSubT)->getParent()) > 0) {
+                    //     if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(pair.first) ) {
+                    //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
+                    //             if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && !ls->isIncluded(cast<Instruction>(toNodeSubT))) { // 
+                    //                 // means this liveInVar need init value
+                    //                 Value * storeVal = cast<StoreInst>(toNodeSubT)->getOperand(0);
+                    //                 // find the last toNodeSubT happens before wheretoInsertFunc
+                    //                 // and not in loopLatch BB
+                    //                 if (instHappensBefore(cast<StoreInst>(toNodeSubT), whereToInsertFunc) && 
+                    //                 loopPreHeaders.count(cast<StoreInst>(toNodeSubT)->getParent()) > 0) {
+                    //                     if (theLastStoreInst == nullptr) {
+                    //                         theLastStoreInst = cast<StoreInst>(toNodeSubT);
+                    //                         liveInInitVal[pair.first] = storeVal;
+                    //                     } else {
+                    //                         if (!instHappensBefore(cast<StoreInst>(toNodeSubT), theLastStoreInst)) {
+                    //                             theLastStoreInst = cast<StoreInst>(toNodeSubT);
+                    //                             liveInInitVal[pair.first] = storeVal;
+                    //                         }
+                    //                     }
+                                        
+                    //                 }
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    //new more effective
+                    auto fromNode = loopFuncPDG->fetchNode(pair.first);
+                    if (fromNode != nullptr) {
+                        for (auto &edge : fromNode->getOutgoingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString()=="RAW") {
+                                auto toNode = cast<Instruction>(edge->getIncomingNode()->getT());
+                                if (isa<StoreInst>(toNode) && !ls->isIncluded(toNode)) {
+                                    StoreInst * toNodeStoreInst = cast<StoreInst>(toNode);
+                                    Value * storeVal = toNodeStoreInst->getOperand(0);
+                                    if (instHappensBefore(toNodeStoreInst, whereToInsertFunc) && 
+                                    loopPreHeaders.count(toNodeStoreInst->getParent()) > 0) {
                                         if (theLastStoreInst == nullptr) {
-                                            theLastStoreInst = cast<StoreInst>(toNodeSubT);
+                                            theLastStoreInst = toNodeStoreInst;
                                             liveInInitVal[pair.first] = storeVal;
                                         } else {
-                                            if (!instHappensBefore(cast<StoreInst>(toNodeSubT), theLastStoreInst)) {
-                                                theLastStoreInst = cast<StoreInst>(toNodeSubT);
+                                            if (!instHappensBefore(toNodeStoreInst, theLastStoreInst)) {
+                                                theLastStoreInst = toNodeStoreInst;
                                                 liveInInitVal[pair.first] = storeVal;
                                             }
                                         }
@@ -307,16 +345,31 @@ bool Loops::runOnModule(Module &M) {
                     while(!workListForBitcast.empty()) {
                         Instruction * inst = *workListForBitcast.begin();
                         workListForBitcast.erase(inst);
+                        //old
                         // for (auto subedge : wholePdg->getEdges()) {
-                        for (auto subedge : loopFuncPDG->getEdges()) {
-                            auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                            auto toNodeSubT = subedge->getIncomingNode()->getT();
+                        // for (auto subedge : loopFuncPDG->getEdges()) {
+                        //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                        //     auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-                            if (cast<Instruction>(toNodeSubT) == inst ) {
-                                if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                                    if (related.count(cast<Instruction>(fromNodeSubT)) <= 0 && !ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                                        workListForBitcast.insert(cast<Instruction>(fromNodeSubT));
-                                        related.insert(cast<Instruction>(fromNodeSubT));
+                        //     if (cast<Instruction>(toNodeSubT) == inst ) {
+                        //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
+                        //             if (related.count(cast<Instruction>(fromNodeSubT)) <= 0 && !ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                        //                 workListForBitcast.insert(cast<Instruction>(fromNodeSubT));
+                        //                 related.insert(cast<Instruction>(fromNodeSubT));
+                        //             }
+                        //         }
+                        //     }
+                        // }
+
+                        //new more effective
+                        auto toNode = loopFuncPDG->fetchNode(inst);
+                        if (toNode != nullptr) {
+                            for (auto &edge : toNode->getIncomingEdges()) {
+                                if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                    auto fromNode = cast<Instruction>(edge->getOutgoingNode()->getT());
+                                    if (related.count(fromNode) <= 0 && !ls->isIncluded(fromNode)) {
+                                        workListForBitcast.insert(fromNode);
+                                        related.insert(fromNode);
                                     }
                                 }
                             }
@@ -372,32 +425,59 @@ bool Loops::runOnModule(Module &M) {
                 while (!workListForCustFunCode.empty()) {
                     Instruction * inst = *workListForCustFunCode.begin();
                     workListForCustFunCode.erase(inst);
-                    for (auto edge : loopPDG->getEdges()) {
-                        Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
-                        Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
+                    //old
+                    // for (auto edge : loopPDG->getEdges()) {
+                    //     Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
+                    //     Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
 
-                        if (toNodeInst == inst) {
-                            if (edge->isMustDependence() && 
-                            edge->dataDepToString() == "RAW") {
-                                if (customedFunRelatedCodeInLoop.count(fromNodeInst) <= 0 && ls->isIncluded(fromNodeInst)) {
-                                    workListForCustFunCode.insert(fromNodeInst);
-                                    customedFunRelatedCodeInLoop.insert(fromNodeInst);
-                                }
+                    //     if (toNodeInst == inst) {
+                    //         if (edge->isMustDependence() && 
+                    //         edge->dataDepToString() == "RAW") {
+                    //             if (customedFunRelatedCodeInLoop.count(fromNodeInst) <= 0 && ls->isIncluded(fromNodeInst)) {
+                    //                 workListForCustFunCode.insert(fromNodeInst);
+                    //                 customedFunRelatedCodeInLoop.insert(fromNodeInst);
+                    //             }
                                 
+                    //         }
+                    //     }
+
+                    //     if (fromNodeInst == inst) {
+                    //         if (edge->isMustDependence() && 
+                    //         edge->dataDepToString() == "RAW") {
+                    //             if (customedFunRelatedCodeInLoop.count(toNodeInst) <= 0 && ls->isIncluded(toNodeInst)) {
+                    //                 workListForCustFunCode.insert(toNodeInst);
+                    //                 customedFunRelatedCodeInLoop.insert(toNodeInst);
+                    //             }
+                                
+                    //         }   
+                    //     }
+                    // }
+                    //new more effective
+                    auto node = loopPDG->fetchNode(inst);
+                    if (node != nullptr) {
+                        //as toNode
+                        for (auto &edge : node->getIncomingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                auto fromNode = cast<Instruction>(edge->getOutgoingNode()->getT());
+                                if (customedFunRelatedCodeInLoop.count(fromNode) <= 0 && ls->isIncluded(fromNode)) {
+                                    workListForCustFunCode.insert(fromNode);
+                                    customedFunRelatedCodeInLoop.insert(fromNode);
+                                }
                             }
                         }
 
-                        if (fromNodeInst == inst) {
-                            if (edge->isMustDependence() && 
-                            edge->dataDepToString() == "RAW") {
-                                if (customedFunRelatedCodeInLoop.count(toNodeInst) <= 0 && ls->isIncluded(toNodeInst)) {
-                                    workListForCustFunCode.insert(toNodeInst);
-                                    customedFunRelatedCodeInLoop.insert(toNodeInst);
+                        //as fromNode
+                        for (auto &edge : node->getOutgoingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                auto toNode = cast<Instruction>(edge->getIncomingNode()->getT());
+                                if (customedFunRelatedCodeInLoop.count(toNode) <= 0 && ls->isIncluded(toNode)) {
+                                    workListForCustFunCode.insert(toNode);
+                                    customedFunRelatedCodeInLoop.insert(toNode);
                                 }
-                                
-                            }   
+                            }
                         }
                     }
+                    
                 }
                 // for (auto inst : customedFunRelatedCodeInLoop) {
                 //     errs() << "codeFunRelatedInst111: " << *inst << "\n";
@@ -406,13 +486,19 @@ bool Loops::runOnModule(Module &M) {
                 // cal safeCheckCallInst, safeCheckInstsInLoopBody, allInstsToOneCallInstInLoopBody, 
                 // std::unordered_set<Instruction *> cmpInstRelated;
                 std::unordered_set<Instruction *> brInstRelated;
+                bool giveUpFlag = false; // 
                 for (auto body : loopBody) {
                     // errs() << "loopBody: " << *body << "\n";
+                    //TODO: try to balance loop
                     for (auto& I : *body) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                             if (IsSafeCheckCall(CI)) {
                                 safecheckCallInst.push_back(&I);
                                 //SafeCheckSet.insert(&I);
+                                
+                            }
+                            if (IsSafeCheckCallStore(CI)) {
+                                giveUpFlag = true;
                             }
                         }
 
@@ -425,6 +511,14 @@ bool Loops::runOnModule(Module &M) {
                         }
                     }
                 }
+
+                // if there is no safecheck call inst , don't do that 
+                if (giveUpFlag) {
+                    delete task;
+                    errs() << "this task we can not handle, because of metadata_store...\n";
+                    continue;
+                }
+                
                 // std::unordered_set<Instruction *> workListForCmpInstRelated(cmpInstRelated.begin(), cmpInstRelated.end());
                 std::unordered_set<Instruction *> workListForBrInstRelated(brInstRelated.begin(), brInstRelated.end());
                 // while (!workListForCmpInstRelated.empty()) {
@@ -433,44 +527,67 @@ bool Loops::runOnModule(Module &M) {
                     // workListForCmpInstRelated.erase(inst);
                     Instruction * inst = *workListForBrInstRelated.begin();
                     workListForBrInstRelated.erase(inst);
-
-                    for (auto edge : loopPDG->getEdges()) {
-                        Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
-                        Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
-                        if (toNodeInst == inst) {
-                            if (edge->isMustDependence() && 
-                            edge->dataDepToString() == "RAW") {
-                                // if (cmpInstRelated.count(fromNodeInst) <= 0
-                                // && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
-                                //     cmpInstRelated.insert(fromNodeInst);
-                                //     workListForCmpInstRelated.insert(fromNodeInst);
-                                // }
-                                if (brInstRelated.count(fromNodeInst) <= 0
-                                && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
-                                    brInstRelated.insert(fromNodeInst);
-                                    workListForBrInstRelated.insert(fromNodeInst);
+                    //old
+                    // for (auto edge : loopPDG->getEdges()) {
+                    //     Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
+                    //     Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
+                    //     if (toNodeInst == inst) {
+                    //         if (edge->isMustDependence() && 
+                    //         edge->dataDepToString() == "RAW") {
+                    //             // if (cmpInstRelated.count(fromNodeInst) <= 0
+                    //             // && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
+                    //             //     cmpInstRelated.insert(fromNodeInst);
+                    //             //     workListForCmpInstRelated.insert(fromNodeInst);
+                    //             // }
+                    //             if (brInstRelated.count(fromNodeInst) <= 0
+                    //             && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
+                    //                 brInstRelated.insert(fromNodeInst);
+                    //                 workListForBrInstRelated.insert(fromNodeInst);
+                    //             }
+                    //         }
+                    //     }
+                    //     if (fromNodeInst == inst) {
+                    //         if (edge->isMustDependence() && 
+                    //         edge->dataDepToString() == "RAW") {
+                    //             // if (cmpInstRelated.count(toNodeInst) <= 0
+                    //             // && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
+                    //             //     cmpInstRelated.insert(toNodeInst);
+                    //             //     workListForCmpInstRelated.insert(toNodeInst);
+                    //             // }
+                    //             if (brInstRelated.count(toNodeInst) <= 0
+                    //             && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
+                    //                 brInstRelated.insert(toNodeInst);
+                    //                 workListForBrInstRelated.insert(toNodeInst);
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    //new more effective
+                    auto node = loopPDG->fetchNode(inst);
+                    if (node != nullptr) {
+                        //as toNode
+                        for (auto &edge : node->getIncomingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                auto fromNode = cast<Instruction>(edge->getOutgoingNode()->getT());
+                                if (brInstRelated.count(fromNode) <= 0 && ls->isIncluded(fromNode) && (fromNode->getParent() == inst->getParent())) {
+                                    brInstRelated.insert(fromNode);
+                                    workListForBrInstRelated.insert(fromNode);
                                 }
                             }
                         }
 
-                        if (fromNodeInst == inst) {
-                            if (edge->isMustDependence() && 
-                            edge->dataDepToString() == "RAW") {
-                                // if (cmpInstRelated.count(toNodeInst) <= 0
-                                // && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
-                                //     cmpInstRelated.insert(toNodeInst);
-                                //     workListForCmpInstRelated.insert(toNodeInst);
-                                // }
-                                if (brInstRelated.count(toNodeInst) <= 0
-                                && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
-                                    brInstRelated.insert(toNodeInst);
-                                    workListForBrInstRelated.insert(toNodeInst);
+                        //as fromNode
+                        for (auto &edge : node->getOutgoingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                auto toNode = cast<Instruction>(edge->getIncomingNode()->getT());
+                                if (brInstRelated.count(toNode) <= 0 && ls->isIncluded(toNode) && (toNode->getParent() == inst->getParent())) {
+                                    brInstRelated.insert(toNode);
+                                    workListForBrInstRelated.insert(toNode);
                                 }
                             }
                         }
-
-                        
                     }
+
                 }
                 // for (auto inst : cmpInstRelated) {
                 //     errs() << "cmpInstRelate: " << *inst << "\n";
@@ -485,25 +602,45 @@ bool Loops::runOnModule(Module &M) {
                     // to: callInst
                     //from : 
                     // for (auto subedge : wholePdg->getEdges()) { //wholePdg can be replaced with loopPDG
-                    for (auto subedge : loopPDG->getEdges()) {    
-                        auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                        auto toNodeSubT = subedge->getIncomingNode()->getT();
+                    //old
+                    // for (auto subedge : loopPDG->getEdges()) {    
+                    //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                    //     auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-                        if (cast<Instruction>(toNodeSubT) == callInst) {
-                            if (subedge->isMustDependence() && 
-                            subedge->dataDepToString() == "RAW") {
-                                // if is a liveInvars no need to be added
-                                if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) {
-                                    errs() << "--- " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
+                    //     if (cast<Instruction>(toNodeSubT) == callInst) {
+                    //         if (subedge->isMustDependence() && 
+                    //         subedge->dataDepToString() == "RAW") {
+                    //             // if is a liveInvars no need to be added
+                    //             if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) {
+                    //                 errs() << "--- " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
+                    //             } else {
+                                    
+                    //                 if (safeCheckInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                    //                     safeCheckInsts.insert(cast<Instruction>(fromNodeSubT));
+                    //                     // if (isa<LoadInst>(cast<Instruction>(fromNodeSubT))) { // %base.load = load xxx
+                    //                     //     workList.insert(cast<Instruction>(fromNodeSubT));
+                    //                     // }
+                    //                 }
+                                    
+                    //             }
+                                
+                    //         }
+                    //     }
+                    // }
+
+                    //new more effective
+                    auto toNode = loopPDG->fetchNode(callInst);
+                    if (toNode != nullptr) {
+                        for (auto &edge : toNode->getIncomingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                auto fromNodeT = edge->getOutgoingNode()->getT();
+                                auto fromNode = cast<Instruction>(fromNodeT);
+                                if (loop->loopEnviroment->isLiveIn(fromNodeT)) {
+                                    errs() << "--- " << *fromNode << " -is liveIn...\n";
                                 } else {
-                                    
-                                    if (safeCheckInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                                        safeCheckInsts.insert(cast<Instruction>(fromNodeSubT));
-                                        // if (isa<LoadInst>(cast<Instruction>(fromNodeSubT))) { // %base.load = load xxx
-                                        //     workList.insert(cast<Instruction>(fromNodeSubT));
-                                        // }
+                                    if (safeCheckInsts.count(fromNode) <= 0  && ls->isIncluded(fromNode)) {
+                                        safeCheckInsts.insert(fromNode);
                                     }
-                                    
                                 }
                                 
                             }
@@ -517,23 +654,44 @@ bool Loops::runOnModule(Module &M) {
                     std::set<Instruction *> allInstsToOneCall(safeCheckInsts.begin(), safeCheckInsts.end());
                     for (auto inst : safeCheckInsts) {
                         // for (auto subedge : wholePdg->getEdges()) { // wholePdg can be replaced with loopPDG
-                        for (auto subedge : loopPDG->getEdges()) {    
-                            auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                            auto toNodeSubT = subedge->getIncomingNode()->getT();
+                        //old
+                        // for (auto subedge : loopPDG->getEdges()) {    
+                        //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                        //     auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-                            if (cast<Instruction>(toNodeSubT) == inst) {
-                                if (subedge->isMustDependence() && 
-                                subedge->dataDepToString() == "RAW") {
-                                    // if is a liveInvars no need to be added
-                                    if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
-                                        errs() << "^^^ " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
-                                    } else {
-                                        if (allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                                            allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
-                                            worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
-                                        }
+                        //     if (cast<Instruction>(toNodeSubT) == inst) {
+                        //         if (subedge->isMustDependence() && 
+                        //         subedge->dataDepToString() == "RAW") {
+                        //             // if is a liveInvars no need to be added
+                        //             if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
+                        //                 errs() << "^^^ " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
+                        //             } else {
+                        //                 if (allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                        //                     allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
+                        //                     worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                        //                 }
                                             
-                                    }                                
+                        //             }                                
+                        //         }
+                        //     }
+                        // }
+
+                        //new more effective
+                        auto toNode = loopPDG->fetchNode(inst);
+                        if (toNode != nullptr) {
+                            for (auto &edge : toNode->getIncomingEdges()) {
+                                if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                    auto fromNodeT = edge->getOutgoingNode()->getT();
+                                    auto fromNode = cast<Instruction>(fromNodeT);
+                                    if (loop->loopEnviroment->isLiveIn(fromNodeT)) {
+                                        errs() << "^^^ " << *fromNode << " -is liveIn...\n";
+                                    } else {
+                                        if (allInstsToOneCall.count(fromNode) <= 0 && ls->isIncluded(fromNode)) {
+                                            allInstsToOneCall.insert(fromNode);
+                                            worklistForOriginalCodes.insert(fromNode);
+                                        }
+                                    }
+                                    
                                 }
                             }
                         }
@@ -543,25 +701,47 @@ bool Loops::runOnModule(Module &M) {
                         Instruction * inst = *worklistForOriginalCodes.begin();
                         worklistForOriginalCodes.erase(inst);
                         // for (auto subedge : wholePdg->getEdges()) {// wholePdg can be replaced with loopPDG
-                        for (auto subedge : loopPDG->getEdges()) {
-                            auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                            auto toNodeSubT = subedge->getIncomingNode()->getT();
+                        //old
+                        // for (auto subedge : loopPDG->getEdges()) {
+                        //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                        //     auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-                            if (cast<Instruction>(toNodeSubT) == inst) {
-                                if (subedge->isMustDependence() && 
-                                subedge->dataDepToString() == "RAW") {
-                                    // if is a liveInvars no need to be added
-                                    if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
-                                        errs() << "*** " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
+                        //     if (cast<Instruction>(toNodeSubT) == inst) {
+                        //         if (subedge->isMustDependence() && 
+                        //         subedge->dataDepToString() == "RAW") {
+                        //             // if is a liveInvars no need to be added
+                        //             if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
+                        //                 errs() << "*** " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
+                        //             } else {
+                        //                 if ( allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
+                        //                     allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
+                        //                     worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                        //                 }
+                        //             }                                
+                        //         }
+                        //     }
+                        // }
+
+                        //new more effective
+                        auto toNode = loopPDG->fetchNode(inst);
+                        if (toNode != nullptr) {
+                            for (auto &edge : toNode->getIncomingEdges()) {
+                                if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                    auto fromNodeT = edge->getOutgoingNode()->getT();
+                                    auto fromNode = cast<Instruction>(fromNodeT);
+                                    if (loop->loopEnviroment->isLiveIn(fromNodeT)) {
+                                        errs() << "*** " << *fromNode << " -is liveIn...\n";
                                     } else {
-                                        if ( allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                                            allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
-                                            worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
+                                        if (allInstsToOneCall.count(fromNode) <= 0 && ls->isIncluded(fromNode)) {
+                                            allInstsToOneCall.insert(fromNode);
+                                            worklistForOriginalCodes.insert(fromNode);
                                         }
-                                    }                                
+                                    }
+                                    
                                 }
                             }
                         }
+
 
                     }
 
@@ -616,35 +796,35 @@ bool Loops::runOnModule(Module &M) {
                 errs() << "^^^^^433^^^^^\n";
 
                 
-                std::vector<Value *> needVariableInitLiveInVars;
-                for (auto pair : liveInInitVal) {
-                    if (!pair.second) {
-                        // if there is load statement in loop body
-                        // we also not consider
-                        for (auto instpair : allInstsToOneCallInstInLoopBody) {
-                            for (auto I : instpair.second) {
-                                for (auto useIt = pair.first->use_begin(); useIt != pair.first->use_end(); ++useIt) {
-                                    Instruction * inst = dyn_cast<Instruction>(*useIt);
-                                    if (inst == I && isa<LoadInst>(I)) {
-                                        needVariableInitLiveInVars.push_back(pair.first);
+                // std::vector<Value *> needVariableInitLiveInVars;
+                // for (auto pair : liveInInitVal) {
+                //     if (!pair.second) {
+                //         // if there is load statement in loop body
+                //         // we also not consider
+                //         for (auto instpair : allInstsToOneCallInstInLoopBody) {
+                //             for (auto I : instpair.second) {
+                //                 for (auto useIt = pair.first->use_begin(); useIt != pair.first->use_end(); ++useIt) {
+                //                     Instruction * inst = dyn_cast<Instruction>(*useIt);
+                //                     if (inst == I && isa<LoadInst>(I)) {
+                //                         needVariableInitLiveInVars.push_back(pair.first);
                                         
-                                    }
-                                }
-                            }
-                        }
+                //                     }
+                //                 }
+                //             }
+                //         }
 
-                    } else if (isa<Constant>(pair.second)) {
+                //     } else if (isa<Constant>(pair.second)) {
 
-                    } else {
-                        needVariableInitLiveInVars.push_back(pair.first);
-                    }
-                }
+                //     } else {
+                //         needVariableInitLiveInVars.push_back(pair.first);
+                //     }
+                // }
 
-                if (needVariableInitLiveInVars.size() != 0) {
-                    delete task;
-                    errs() << "this task we can not handle...\n";
-                    continue;
-                }
+                // if (needVariableInitLiveInVars.size() != 0) {
+                //     delete task;
+                //     errs() << "this task we can not handle...\n";
+                //     continue;
+                // }
 
                 // std::unordered_map<Instruction *, std::set<Instruction *>> notToParallelCodes;
                 for (auto pair : allInstsToOneCallInstInLoopBody) {
@@ -676,7 +856,14 @@ bool Loops::runOnModule(Module &M) {
                     //         }
                     //     }
                     // }
-
+                    //corner case, if there is no related inst for this customed func
+                    if (pair.second.size() == 0) {
+                        for (auto inst : customedFunRelatedCodeInLoop) {
+                            if (inst == pair.first) {
+                                removed = true;
+                            }
+                        }
+                    }
 
                     if (!removed) {
                         // errs() << "-441-\n";
@@ -686,6 +873,14 @@ bool Loops::runOnModule(Module &M) {
                 }
                 
                 errs() << "^^^^^customedFunRelatedCodeInLoop^^^^^\n";
+
+                // if there is no safecheck call inst , don't do that 
+                if (allInstsToOneCallInstInLoopBodyFinal.size() == 0 || 
+                safeCheckInstsInLoopBodyFinal.size() == 0) {
+                    delete task;
+                    errs() << "this task we can not handle, because of non safe call inst...\n";
+                    continue;
+                }
 
                 // get safeCheckInstsInLoopBody (Call + bitcast + load alloca...etc)
                 // get allInstsToOneCallInLoopBody (Call + bitcast + load alloca... + original code(load,store,etc))
@@ -704,23 +899,23 @@ bool Loops::runOnModule(Module &M) {
                 loopTasks.push_back(task);
 
                 //print some info for debugging
-                std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter1;
-                for (iter1 = safeCheckInstsInLoopBodyFinal.begin(); iter1 != safeCheckInstsInLoopBodyFinal.end(); ++iter1) {
-                    errs() << "--AA: " << *(iter1->first) << " has : " << iter1->second.size() << "\n";
-                    for (auto I : iter1->second) {
-                        errs() << *I <<"\n";
-                    }
-                }
-                errs() << "^^^^^safeCheckInstsInLoopBodyAfterRemoved^^^^^\n";
-                std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter2;
-                for (iter2 = allInstsToOneCallInstInLoopBodyFinal.begin(); iter2 != allInstsToOneCallInstInLoopBodyFinal.end(); ++iter2) {
-                    errs() << "--BB: " << *(iter2->first) << " has : " << iter2->second.size() << "\n";
-                    for (auto I : iter2->second) {
-                        // if (isa<LoadInst>(I)) errs() << "Inst: " << *I << ", Op0 Type: " << *cast<LoadInst>(I)->getOperand(0)->getPointerElementType() << "\n";
-                        errs() << *I <<"\n";
-                    }
-                }
-                errs() << "^^^^^allInstsToOneCallInstInLoopBodyAfterRemoved^^^^^\n";
+                // std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter1;
+                // for (iter1 = safeCheckInstsInLoopBodyFinal.begin(); iter1 != safeCheckInstsInLoopBodyFinal.end(); ++iter1) {
+                //     errs() << "--AA: " << *(iter1->first) << " has : " << iter1->second.size() << "\n";
+                //     for (auto I : iter1->second) {
+                //         errs() << *I <<"\n";
+                //     }
+                // }
+                // errs() << "^^^^^safeCheckInstsInLoopBodyAfterRemoved^^^^^\n";
+                // std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter2;
+                // for (iter2 = allInstsToOneCallInstInLoopBodyFinal.begin(); iter2 != allInstsToOneCallInstInLoopBodyFinal.end(); ++iter2) {
+                //     errs() << "--BB: " << *(iter2->first) << " has : " << iter2->second.size() << "\n";
+                //     for (auto I : iter2->second) {
+                //         // if (isa<LoadInst>(I)) errs() << "Inst: " << *I << ", Op0 Type: " << *cast<LoadInst>(I)->getOperand(0)->getPointerElementType() << "\n";
+                //         errs() << *I <<"\n";
+                //     }
+                // }
+                // errs() << "^^^^^allInstsToOneCallInstInLoopBodyAfterRemoved^^^^^\n";
             }
 
 
