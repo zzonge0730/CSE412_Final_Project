@@ -387,7 +387,6 @@ bool Loops::runOnModule(Module &M) {
                 errs() << "setBitCastLiveInVarRelated...\n";
 
 
-                // get safeCheckCallInstInLoopBody
                 std::vector<Instruction *> safecheckCallInst;
                 std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
                 std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
@@ -487,12 +486,28 @@ bool Loops::runOnModule(Module &M) {
                 // std::unordered_set<Instruction *> cmpInstRelated;
                 std::unordered_set<Instruction *> brInstRelated;
                 bool giveUpFlag = false; // 
+
+                // std::srand(std::time(0)); //seed
+                std::unordered_set<Instruction *> safecheckCallInstDoNotInLoopBody;
+                bool coinFlag = true;
+                int countCoin = 0;
                 for (auto body : loopBody) {
                     // errs() << "loopBody: " << *body << "\n";
+                    // Function * F = body->getParent();
+                    // if (!F->getName().equals("LBM_performStreamCollide")) continue;
                     //TODO: try to balance loop
+                    countCoin = 0;
+                    // int coin = std::rand() % 100;
+                    // if (coin >=0 && coin <=49 ) coinFlag = true;
                     for (auto& I : *body) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                             if (IsSafeCheckCall(CI)) {
+                                if (countCoin < 4 && IsIntraTaskConsideredForSB(CI)) {
+                                    safecheckCallInstDoNotInLoopBody.insert(&I);
+                                    countCoin++;   
+                                }
+                                
+                                
                                 safecheckCallInst.push_back(&I);
                                 //SafeCheckSet.insert(&I);
                                 
@@ -510,6 +525,8 @@ bool Loops::runOnModule(Module &M) {
                             brInstRelated.insert(&I);
                         }
                     }
+                    // if (countCoin >= 4) coinFlag = false;
+                    // else coinFlag = true;
                 }
 
                 // if there is no safecheck call inst , don't do that 
@@ -884,7 +901,16 @@ bool Loops::runOnModule(Module &M) {
 
                 // get safeCheckInstsInLoopBody (Call + bitcast + load alloca...etc)
                 // get allInstsToOneCallInLoopBody (Call + bitcast + load alloca... + original code(load,store,etc))
-                task->setSafeCheckCallInstsInLoopBody(safecheckCallInst);
+                std::unordered_set<Instruction*> notInLoopBody;
+                for (auto instcall : safecheckCallInstDoNotInLoopBody) {
+                    errs() << "instcall: " << *instcall << "\n";
+                    for (auto interninst : allInstsToOneCallInstInLoopBodyFinal.at(instcall)) {
+                        errs() << "interninst: " << *interninst << "\n";
+                        notInLoopBody.insert(interninst);
+                    }
+                    notInLoopBody.insert(instcall);
+                }
+                task->setSafeCheckInstsNoInLoopBody(notInLoopBody);
                 task->setSafeCheckInstsInLoopBody(safeCheckInstsInLoopBodyFinal);
                 task->setAllInstsToOneCallInstInLoopBody(allInstsToOneCallInstInLoopBodyFinal);
                 task->setOldLoopBody(loopBody);

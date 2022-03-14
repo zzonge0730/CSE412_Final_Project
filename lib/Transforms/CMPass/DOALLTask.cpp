@@ -250,8 +250,8 @@ void DOALLTask::addLiveInVar(Value * liveIn) {
     this->liveInVars.push_back(liveIn);
 }
 
-void DOALLTask::setSafeCheckCallInstsInLoopBody(std::vector<Instruction *> checkcalls) {
-    this->safeCheckCallInstsInLoopBody = checkcalls;
+void DOALLTask::setSafeCheckInstsNoInLoopBody(std::unordered_set<Instruction *> checkcalls) {
+    this->notInLoopBody = checkcalls;
 }
 void DOALLTask::setSafeCheckInstsInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> safecodes) {
     this->safeCheckInstsInLoopBody = safecodes;
@@ -665,12 +665,12 @@ std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) 
             castArgForNew = liveIn;
             // errs() << "--622\n";
         } else {
-            castArgForNew = new AllocaInst(liveInType, "", this->whereToInsertFunc);
+            castArgForNew = new AllocaInst(liveInType, "ya_", this->whereToInsertFunc);
             new StoreInst(liveIn, castArgForNew, this->whereToInsertFunc);
             // errs() << "--626\n";
         }
         // errs() << "castArgForNew: " << *castArgForNew <<"\n";
-        BitCastInst * bcInst = new BitCastInst(castArgForNew, voidStarTy, "", this->whereToInsertFunc);
+        BitCastInst * bcInst = new BitCastInst(castArgForNew, voidStarTy, "yy_", this->whereToInsertFunc);
         // errs() << "bcInst: " << *bcInst << "\n";
         args.push_back(bcInst);
         // errs() << "--631\n";
@@ -782,9 +782,10 @@ void DOALLTask::eraseSafeCheckCodes() {
     }
 
 
+
     //the code in safeCheckInstsInLoopBody should be erase
     std::unordered_set<Instruction*> toErased;
-    for (auto pair : this->safeCheckInstsInLoopBody) {
+    for (auto pair : this->safeCheckInstsInLoopBody) { 
         // if call ret value is used by _RV_pmd_cp_pmd_ret, do not erase
         bool usedByFlag = false;
         if (CallInst * ci = dyn_cast<CallInst>(pair.first)) {
@@ -818,15 +819,14 @@ void DOALLTask::eraseSafeCheckCodes() {
                     continue;
                 }
             }
-
-
-
             toErased.insert(inst);
         }
         toErased.insert(pair.first);
     }
 
     for (auto inst : toErased) {
+            //do not erase these codes in source program
+        if (this->notInLoopBody.count(inst) != 0) continue;
         inst->eraseFromParent();
     }
 
@@ -1437,15 +1437,20 @@ bool DOALLTask::instIsInLoopBody(Instruction * inst) {
     return false;
 }
 bool DOALLTask::instIsInAllInstsToOneCall(Instruction * inst) {
+    if (this->notInLoopBody.count(inst) != 0 && !IsForRelated(inst)) {
+        return false;
+    }
+
     for (auto pair : this->allInstsToOneCallInstInLoopBody) {
         
         for (auto I : pair.second) {
             
             if (I == inst) {
+                
                 return true;
             }
         }
-        if (pair.first == inst) {
+        if ((pair.first == inst)) {
             return true;
         }
     }
@@ -1576,4 +1581,14 @@ bool DOALLTask::isDoNotParallelCodes(Instruction * inst) {
     }
 
     return false;
+}
+
+bool DOALLTask::IsForRelated(Instruction * inst) {
+    BasicBlock * bb = inst->getParent();
+    std::string label = bb->getName();
+    if (label.find("for.inc") != label.npos) {
+        return true;
+    }
+    return false;
+    
 }

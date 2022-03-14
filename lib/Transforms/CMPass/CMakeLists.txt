@@ -13,6 +13,7 @@ add_llvm_library( CMPass SHARED
     # Hot.cpp
     IdentifyPass.cpp
     InductionVariables.cpp
+    InterTask.cpp
     InvariantManager.cpp
     IVStepperUtility.cpp
     LoopCarriedDependencies.cpp

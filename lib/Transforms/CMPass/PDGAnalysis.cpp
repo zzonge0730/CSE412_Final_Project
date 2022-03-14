@@ -49,8 +49,9 @@ bool PDGAnalysis::runOnModule(Module &M) {
     //identifyFunctionsThatInvokeUnhandledLibrary(M);
 
     //construct PDG
+    
     auto currentPDG = this->getPDG();
-
+    errs() << "----52----\n";
     //check if we should dump the PDG
     // if (this->dumpPDG) {
     //     //dump the PDG
@@ -154,18 +155,22 @@ PDG * PDGAnalysis::getFunctionPDG(Function &F) {
 PDG * PDGAnalysis::getPDG(void) {
     //check if we have alread built the PDG
     if (this->programDependenceGraph) {
+        errs() << "---158---\n";
         return this->programDependenceGraph;
     }
 
     //construct the PDG
     //compute the PDG using the dependence analysis
+    errs() << "---164---\n";
     this->programDependenceGraph = constructPDGFromAnalysis(*this->M);
 
     return this->programDependenceGraph;
 }
 
 PDG * PDGAnalysis::constructPDGFromAnalysis(Module &M) {
+    errs() << "---171---\n";
     auto pdg = new PDG(M);
+    errs() << "---173---\n";
     constructEdgesFromUseDefs(pdg);
     errs() << "^^^construct UseDef^^^\n";
     constructEdgesFromAliases(pdg, M);
@@ -206,18 +211,19 @@ void PDGAnalysis::constructEdgesFromUseDefs(PDG *pdg) {
         //if it doesn't, then there is no varaible dependence
         
         //auto pdgValue = node->getT();
-        // errs() << "---getT---180\n";
+        errs() << "---getT---180\n";
         //auto pdgValue = (*node_iterator)->getT();
-        llvm::Value * pdgValue = (*node_iterator)->getT();
-        // errs() << "---after-getT---180\n";
+        Value * pdgValue = (*node_iterator)->getT();
+        errs() << "---after-getT---180\n";
         //assert((pdgValue == nullptr) && "pdgValue is nullptr\n");
-        if (pdgValue == nullptr || pdgValue == NULL) {
+        if (pdgValue == nullptr) {
             errs() << "pdgValue is nullptr\n";
         }
+        errs() << "---after-getT---222\n";
         if (pdgValue->use_empty()) {
             errs() << "pdgValue use is empty...\n";
         }
-        
+        errs() << "---after-getT---226\n";
         if (!isa<Instruction>(pdgValue)) continue;
         // errs() << " pdgValue Inst : " << *cast<Instruction>(pdgValue) << "\n";
         // errs() << "---getNumUses(): " << std::distance(pdgValue->use_begin(), pdgValue->use_end()) << "\n";
@@ -225,10 +231,10 @@ void PDGAnalysis::constructEdgesFromUseDefs(PDG *pdg) {
 
         //the current definition has uses
         //add the uses
-        // errs() << "---PDGAnalysis 181---\n";
+        errs() << "---PDGAnalysis 181---\n";
         //for (auto& U : pdgValue->uses()) {
         for (Value::use_iterator U = pdgValue->use_begin(); U != pdgValue->use_end(); ++U) {
-            // errs() << "---PDGAnalysis 184---\n";
+            errs() << "---PDGAnalysis 184---\n";
             //Instruction *User = dyn_cast<Instruction>(*U);
             if (isa<Instruction>(*U) || isa<Argument>(*U)) {
                 // errs () << "Inst: " << *dyn_cast<Instruction>(*U) << "\n";

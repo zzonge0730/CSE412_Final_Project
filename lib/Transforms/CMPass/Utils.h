@@ -18,6 +18,7 @@ using namespace llvm;
 bool IsSafeCheckCall(CallInst *CI);
 bool IsSafeCheckCallStore(CallInst *CI);
 bool IsSafeCheckCallForMovec(CallInst *CI);
+bool IsIntraTaskConsideredForSB(CallInst *CI);
 bool IsSafeCheckFun(StringRef funcName);
 
 bool IsEmittingInst(Instruction &I);

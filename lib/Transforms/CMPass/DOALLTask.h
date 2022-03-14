@@ -91,7 +91,7 @@ public:
     // void setLoopLatch(BasicBlock * loopL);
     void setWhereToInsertFunc(Instruction * inst);
     void addLiveInVar(Value * liveIn);
-    void setSafeCheckCallInstsInLoopBody(std::vector<Instruction *> checkcalls);
+    void setSafeCheckInstsNoInLoopBody(std::unordered_set<Instruction *> checkInsts);
     void setSafeCheckInstsInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> safecodes);
     void setAllInstsToOneCallInstInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> allinsts);    
     // void transform();
@@ -136,7 +136,7 @@ private:
     // BasicBlock * loopLatch;
     // BasicBlock * newLoopLatch;
     Instruction * whereToInsertFunc;
-    std::vector<Instruction *> safeCheckCallInstsInLoopBody;
+    std::unordered_set<Instruction *> notInLoopBody;
     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
     std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
     std::unordered_set<BasicBlock *> oldLoopBody;
@@ -178,6 +178,7 @@ private:
 
     std::unordered_map<Instruction *, std::set<Instruction *>> doNotParallelCodes;
     bool isDoNotParallelCodes(Instruction * inst);
+    bool IsForRelated(Instruction * inst);
 };
 
 #endif

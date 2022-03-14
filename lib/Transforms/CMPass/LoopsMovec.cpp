@@ -901,7 +901,7 @@ bool LoopsMovec::runOnModule(Module &M) {
 
                 // get safeCheckInstsInLoopBody (Call + bitcast + load alloca...etc)
                 // get allInstsToOneCallInLoopBody (Call + bitcast + load alloca... + original code(load,store,etc))
-                task->setSafeCheckCallInstsInLoopBody(safecheckCallInst);
+                // task->setSafeCheckCallInstsInLoopBody(safecheckCallInst);
                 task->setSafeCheckInstsInLoopBody(safeCheckInstsInLoopBodyFinal);
                 task->setAllInstsToOneCallInstInLoopBody(allInstsToOneCallInstInLoopBodyFinal);
                 task->setOldLoopBody(loopBody);

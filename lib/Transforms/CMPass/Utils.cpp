@@ -60,6 +60,20 @@ bool IsSafeCheckCallStore(CallInst *CI){
     return false;
 }
 
+bool IsIntraTaskConsideredForSB(CallInst *CI) {
+    if(CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if( callName.equals("__softboundcets_temporal_load_dereference_check") ||
+            callName.equals("__softboundcets_spatial_load_dereference_check") ||
+            callName.equals("__softboundcets_temporal_store_dereference_check") ||
+            callName.equals("__softboundcets_spatial_store_dereference_check"))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsSafeCheckCallForMovec(CallInst *CI) {
     if (CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
