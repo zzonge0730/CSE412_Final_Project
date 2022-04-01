@@ -1,5 +1,7 @@
 #include "Loops.h"
 
+#define SafeC 1
+
 char Loops::ID = 0;
 
 static RegisterPass<Loops> X("Loops", "Find and Get Loops in the program");
@@ -112,8 +114,10 @@ bool Loops::runOnModule(Module &M) {
         
         // std::set<uint32_t> levelSet;
         std::unordered_set<BasicBlock *> loopPreHeaders;
+        std::unordered_set<BasicBlock *> loopLatchBBs;
         for (auto loop : loopsToParallelize) {
             loopPreHeaders.insert(loop->getLoopStructure()->getPreHeader());
+            loopLatchBBs.insert(loop->getLoopStructure()->getLatches().begin(), loop->getLoopStructure()->getLatches().end());
         }
         // uint32_t maxNestingLevel = *--levelSet.end();
 
@@ -403,6 +407,15 @@ bool Loops::runOnModule(Module &M) {
                             if (calledFunc == nullptr) continue; // !! could return null if the call is an indirect call through a function pointer
                             StringRef callName = calledFunc->getName();
                             // errs() << "call: " << callName << "\n";
+                            #if SafeC
+                            if (callName.startswith("_safeC_shadow_stack_store_bound")) {
+                                relatedFlag = true;
+                            }
+                            if (callName.startswith("_safeC_deallocate_shadow_stack_space")) {
+                                customedFunRelatedCodeInLoop.insert(&I);
+                                relatedFlag = false;
+                            }
+                            #else
                             if (callName.startswith("__softboundcets_allocate_shadow_stack_space")) {
                                 relatedFlag = true;
                             }
@@ -410,6 +423,7 @@ bool Loops::runOnModule(Module &M) {
                                 customedFunRelatedCodeInLoop.insert(&I);
                                 relatedFlag = false;
                             }
+                            #endif
                             if (relatedFlag) {
                                 customedFunRelatedCodeInLoop.insert(&I);
                             }
@@ -501,6 +515,22 @@ bool Loops::runOnModule(Module &M) {
                     // if (coin >=0 && coin <=49 ) coinFlag = true;
                     for (auto& I : *body) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+                            #if SafeC
+                            if (IsSafeCheckCallForSafeC(CI)) {
+                                if (countCoin < 1 && IsIntraTaskConsideredForSafeC(CI)) { // 4 for sb-2mm
+                                    safecheckCallInstDoNotInLoopBody.insert(&I);
+                                    countCoin++;   
+                                }
+                                
+                                
+                                safecheckCallInst.push_back(&I);
+                                //SafeCheckSet.insert(&I);
+                                
+                            }
+                            if (IsSafeCheckCallStoreForSafeC(CI)) {
+                                giveUpFlag = true;
+                            }
+                            #else
                             if (IsSafeCheckCall(CI)) {
                                 if (countCoin < 4 && IsIntraTaskConsideredForSB(CI)) {
                                     safecheckCallInstDoNotInLoopBody.insert(&I);
@@ -515,6 +545,7 @@ bool Loops::runOnModule(Module &M) {
                             if (IsSafeCheckCallStore(CI)) {
                                 giveUpFlag = true;
                             }
+                            #endif
                         }
 
                         // if (CmpInst *cmpInst = dyn_cast<CmpInst>(&I)) {
@@ -893,7 +924,7 @@ bool Loops::runOnModule(Module &M) {
 
                 // if there is no safecheck call inst , don't do that 
                 if (allInstsToOneCallInstInLoopBodyFinal.size() == 0 || 
-                safeCheckInstsInLoopBodyFinal.size() == 0) {
+                safeCheckInstsInLoopBodyFinal.size() == 0 || safecheckCallInst.size() == safecheckCallInstDoNotInLoopBody.size()) {
                     delete task;
                     errs() << "this task we can not handle, because of non safe call inst...\n";
                     continue;
@@ -905,6 +936,9 @@ bool Loops::runOnModule(Module &M) {
                 for (auto instcall : safecheckCallInstDoNotInLoopBody) {
                     errs() << "instcall: " << *instcall << "\n";
                     for (auto interninst : allInstsToOneCallInstInLoopBodyFinal.at(instcall)) {
+                        if (loopLatchBBs.count(interninst->getParent()) != 0) {
+                            continue;
+                        }
                         errs() << "interninst: " << *interninst << "\n";
                         notInLoopBody.insert(interninst);
                     }

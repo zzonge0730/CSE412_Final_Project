@@ -25,11 +25,16 @@ bool InterTask::runOnModule(Module &M) {
     for (auto &F : M) {
         if (F.isDeclaration()) continue;
         if (movecLibFunction.count(F.getName())) continue;
-
+        if (!IsConsideredFunForInterTask(F)) continue;
+        // for lbm
+        // if (!F.getName().equals("LBM_performStreamCollide")) continue; 
         for (auto &BB : F) {
             for (auto &I : BB) {
                 if (CallInst * CI = dyn_cast<CallInst>(&I)) {
-                    if (IsIntraTaskConsideredForSB(CI)) {
+                    // if (IsIntraTaskConsideredForSB(CI)) {
+                    //     CIToBeSpawned.push_back(CI);
+                    // }
+                    if (IsIntraTaskConsideredForMC(CI)) {
                         CIToBeSpawned.push_back(CI);
                     }
                 }
@@ -38,6 +43,8 @@ bool InterTask::runOnModule(Module &M) {
     }
 
     errs() << "CIToBeSpawned Size: " << CIToBeSpawned.size() << "\n";
+
+    BasicBlock * lastBasicBlock = nullptr;
 
     for (auto *CI : CIToBeSpawned) {
 
@@ -84,6 +91,14 @@ bool InterTask::runOnModule(Module &M) {
                 //     castArgs.push_back(tmpCast);   
                 // }
                 Type * destTy = Type::getInt64Ty(ctx);
+                if (tmpType->isIntegerTy(8)) {
+                    destTy = Type::getInt8Ty(ctx);
+                } else if (tmpType->isIntegerTy(16)) {
+                    destTy = Type::getInt16Ty(ctx);
+                } else if (tmpType->isIntegerTy(32)) {
+                    destTy = Type::getInt32Ty(ctx);
+                }
+                
                 Value * tmpCast = CastInst::Create(Instruction::PtrToInt, bitcast, destTy, "zt_", entryBB);
                 castArgs.push_back(tmpCast);   
 
@@ -93,7 +108,7 @@ bool InterTask::runOnModule(Module &M) {
         CallInst * callInst = CallInst::Create(fun, castArgs, "", entryBB);
         ReturnInst::Create(ctx, nullptr, entryBB);
         genCtorForSpawn(wrapperFunc);
-
+        
         //create thread
         std::vector<Value *> needArgs = genSpawnArgs(CI, wrapperFunc);
         // errs() << "needArgSize: " << needArgs.size() << "\n";
@@ -115,11 +130,142 @@ bool InterTask::runOnModule(Module &M) {
     
         //considering for intra task
         //join point naively set right before the last inst of the basicblock 
-        // Instruction * joinPoint = &(*(--CI->getParent()->end()));
-        Instruction * joinPoint = getNextInstruction(CI, CI->getParent());
+        Instruction * joinPoint = &(*(--CI->getParent()->end()));
+        BasicBlock * curBB = nullptr;
+        auto bbList = &(CI->getParent()->getParent()->getBasicBlockList());
+        for (auto bb = bbList->rbegin(); bb != bbList->rend(); bb++) {
+            for (Instruction& inst : *bb) {
+                if (isa<ReturnInst>(&inst)) {   
+                    joinPoint = &(*((*bb).getFirstInsertionPt()));
+                    curBB = CI->getParent();
+                    break;
+                }
+            }
+            if (curBB != nullptr) break;
+        }
+        // Instruction * joinPoint = getNextInstruction(CI, CI->getParent());
+        if (curBB != lastBasicBlock) {
+            lastBasicBlock = curBB;
+            CallInst::Create(this->joinFunc, id, "", joinPoint);
+        }
+        
+        //for SB
+        // CI->eraseFromParent();
+        //for MC
+        StringRef funcName = CI->getCalledFunction()->getName();
+        Instruction * from = nullptr;
+        Instruction * subscript = nullptr;
+        if (funcName.equals("_RV_check_dpv_ss")) {
+            errs() << "---is here188--->>>\n";
+            subscript = dyn_cast<Instruction>(CI->getArgOperand(2));
+            if (ConstantInt * val = dyn_cast<ConstantInt>(CI->getArgOperand(2))) {
+                Constant * ct = ConstantInt::get(IntegerType::getInt64Ty(ctx), val->getValue());
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                        auto opV = (*opIt).get();
+                        if (auto opI = dyn_cast<Instruction>(opV) ) {
+                            // errs() << "--710--" << *opI << "\n";
+                            if (opI == CI) {
+                                (*opIt).set(ct);
+                            }
+                            
+                        }
+                    }
+                }
+            } else {
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                        auto opV = (*opIt).get();
+                        if (auto opI = dyn_cast<Instruction>(opV) ) {
+                            // errs() << "--710--" << *opI << "\n";
+                            if (opI == CI) {
+                                (*opIt).set(subscript);
+                            }
+                            
+                        }
+                    }
+                }
+            }
+        } else if (funcName.equals("_RV_check_dpc_ss")) {
+            errs() << "---is here188--->>>\n";
+            subscript = dyn_cast<Instruction>(CI->getArgOperand(3));
+            if (ConstantInt * val = dyn_cast<ConstantInt>(CI->getArgOperand(3))) {
+                Constant * ct = ConstantInt::get(IntegerType::getInt64Ty(ctx), val->getValue());
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                        auto opV = (*opIt).get();
+                        if (auto opI = dyn_cast<Instruction>(opV) ) {
+                            // errs() << "--710--" << *opI << "\n";
+                            if (opI == CI) {
+                                (*opIt).set(ct);
+                            }
+                            
+                        }
+                    }
+                }
+            } else {
+                std::unordered_set<Instruction *> cachedInstUse;
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    if (cachedInstUse.size() >= 1) break;
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (instUse == nullptr) continue;
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                        auto opV = (*opIt).get();
+                        if (auto opI = dyn_cast<Instruction>(opV) ) {
+                            // errs() << "--710--" << *opI << "\n";
+                            if (opI == CI) {
+                                (*opIt).set(subscript);
+                            }
+                            
+                        }
+                    }
+                }
+            }
+        } else if (funcName.equals("_RV_check_dpv")) {
+            from = dyn_cast<Instruction>(CI->getArgOperand(1));
+        }
 
-        CallInst::Create(this->joinFunc, id, "", joinPoint);
+        if (from) {
+                //find the use of CI and change dataflow
+                std::unordered_set<Instruction *> cachedInstUse;
+                errs() << "---is here169--->>>\n";
+                for (auto useIt = CI->use_begin(); useIt != CI->use_end(); ++useIt) {
+                    Instruction * instUse = dyn_cast<Instruction>(*useIt);
+                    if (cachedInstUse.count(instUse) > 0) continue;
+                    cachedInstUse.insert(instUse);
+                    for (User::op_iterator opIt = instUse->op_begin(); opIt != instUse->op_end(); ++opIt) {
+                        auto opV = (*opIt).get();
 
+                        if (auto opI = dyn_cast<Instruction>(opV) ) {
+                            // errs() << "--710--" << *opI << "\n";
+                            if (opI == CI) {
+                                (*opIt).set(from);
+                            }
+                            
+                        }
+                    }
+                }
+        }
         CI->eraseFromParent();
     }
     errs() << *this->mo << "\n";

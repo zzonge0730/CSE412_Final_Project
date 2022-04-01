@@ -843,7 +843,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 
                 // if there is no safecheck call inst , don't do that 
                 if (allInstsToOneCallInstInLoopBodyFinal.size() == 0 || 
-                safeCheckInstsInLoopBodyFinal.size() == 0) {
+                safeCheckInstsInLoopBodyFinal.size() == 0 || safecheckCallInst.size() == 0) {
                     delete task;
                     errs() << "this task we can not handle, because of non safe call inst...\n";
                     continue;
@@ -1123,7 +1123,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                     curCost += calCost(pair, safeCheckCallInstJoinPoint);
                 }
 
-                if (curCost < minCost) {
+                if (curCost <= minCost) {
                     minCost = curCost;
                     minCostPairVec.assign(item.begin(), item.end());
                 }

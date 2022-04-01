@@ -17,9 +17,14 @@ using namespace llvm;
 
 bool IsSafeCheckCall(CallInst *CI);
 bool IsSafeCheckCallStore(CallInst *CI);
+bool IsSafeCheckCallStoreForSafeC(CallInst *CI);
 bool IsSafeCheckCallForMovec(CallInst *CI);
+bool IsSafeCheckCallForSafeC(CallInst *CI);
 bool IsIntraTaskConsideredForSB(CallInst *CI);
+bool IsIntraTaskConsideredForMC(CallInst * CI);
+bool IsIntraTaskConsideredForSafeC(CallInst *CI);
 bool IsSafeCheckFun(StringRef funcName);
+bool IsConsideredFunForInterTask(Function &F);
 
 bool IsEmittingInst(Instruction &I);
 bool IsMemAccessInst(Instruction &I);
@@ -239,6 +244,55 @@ const std::unordered_set<std::string> movecLibFunction {
     "_RV_fmd_pmd_dc_snda",
     "_RV_trie_remove_pmd",
     "_RV_hashtbl_insert_fmd"
+};
+
+const std::unordered_set<std::string> softboundcetsLibFunction {
+    "__softboundcets_global_init",
+    "__softboundcets_stub",
+    "__softboundcets_init",
+    "__softboundcets_allocate_shadow_stack_space",
+    "__softboundcets_load_base_shadow_stack",
+    "__softboundcets_load_bound_shadow_stack",
+    "__softboundcets_load_key_shadow_stack",
+    "__softboundcets_load_lock_shadow_stack",
+    "__softboundcets_store_base_shadow_stack",
+    "__softboundcets_store_bound_shadow_stack",
+    "__softboundcets_store_key_shadow_stack",
+    "__softboundcets_store_lock_shadow_stack",
+    "__softboundcets_deallocate_shadow_stack_space",
+    "__softboundcets_trie_allocate",
+    "__softboundcets_print_metadata",
+    "__softboundcets_intermediate",
+    "__softboundcets_dummy",
+    "__softboundcets_introspect_metadata",
+    "__softboundcets_copy_metadata",
+    "__softboundcets_shrink_bounds",
+    "__softboundcets_spatial_call_dereference_check",
+    "__softboundcets_spatial_load_dereference_check",
+    "__softboundcets_spatial_store_dereference_check",
+    "__softboundcets_memcopy_check",
+    "__softboundcets_memset_check",
+    "__softboundcets_metadata_store",
+    "__softboundcets_metadata_map",
+    "__softboundcets_metadata_load_base",
+    "__softboundcets_metadata_load_bound",
+    "__softboundcets_metadata_load_key",
+    "__softboundcets_metadata_load_lock",
+    "__softboundcets_metadata_load",
+    "__softboundcets_temporal_load_dereference_check",
+    "__softboundcets_temporal_store_dereference_check",
+    "__softboundcets_stack_memory_deallocation",
+    "__softboundcets_memory_deallocation",
+    "__softboundcets_allocate_lock_location",
+    "__softboundcets_allocation_secondary_trie_allocate_range",
+    "__softboundcets_allocation_secondary_trie_allocate",
+    "__softboundcets_stack_memory_allocation",
+    "__softboundcets_memory_allocation",
+    "__softboundcets_get_global_lock",
+    "__softboundcets_add_to_free_map",
+    "__softboundcets_check_remove_from_free_map",
+    "__softboundcets_metadata_load_vector",
+    "__softboundcets_metadata_store_vector"
 };
 
 #endif

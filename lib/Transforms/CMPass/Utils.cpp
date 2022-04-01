@@ -60,6 +60,17 @@ bool IsSafeCheckCallStore(CallInst *CI){
     return false;
 }
 
+bool IsSafeCheckCallStoreForSafeC(CallInst *CI){
+    if(CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if(callName.equals("_safeC_metadata_update"))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsIntraTaskConsideredForSB(CallInst *CI) {
     if(CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
@@ -72,6 +83,31 @@ bool IsIntraTaskConsideredForSB(CallInst *CI) {
         }
     }
     return false;
+}
+
+bool IsIntraTaskConsideredForSafeC(CallInst *CI) {
+    if(CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if( callName.equals("_safeC_spatial_check") ||
+            callName.equals("_safeC_spatial_check_array2"))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsIntraTaskConsideredForMC(CallInst * CI) {
+    if(CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if( callName.equals("_RV_check_dpv_ss") ||
+            callName.equals("_RV_check_dpc_ss") ||
+            callName.equals("_RV_check_dpv"))
+        {
+            return true;
+        }
+    }
+    return false;   
 }
 
 bool IsSafeCheckCallForMovec(CallInst *CI) {
@@ -95,6 +131,100 @@ bool IsSafeCheckCallForMovec(CallInst *CI) {
         }
     }
 
+    return false;
+}
+
+bool IsSafeCheckCallForSafeC(CallInst *CI) {
+    if (CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if (callName.equals("_safeC_metadata_lookup_base_bound") ||
+            callName.equals("_safeC_metadata_update") ||
+            callName.equals("_safeC_spatial_check") ||
+            callName.equals("_safeC_spatial_check_array2")
+            ) {
+                return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsConsideredFunForInterTask(Function &F) {
+    
+    StringRef str = F.getName();
+    if (
+    // for bzip2
+    // str.equals("BZ2_decompress") 
+    // str.equals("bsW") 
+    // || str.equals("add_pair_to_block") || str.equals("handle_compress") ||
+    // str.equals("BZ2_bzRead") || str.equals("BZ2_bzWrite") || str.equals("copy_output_until_stop") || str.equals("BZ2_hbCreateDecodeTables")
+    // str.equals("BZ2_hbMakeCodeLengths") || str.equals("mainSort") || str.equals("sendMTFValues") || str.equals("generateMTFValues")
+    
+    // mcf
+    // str.equals("sort_basket") || str.equals("insert_new_arc") || str.equals("replace_weaker_arc") || 
+    // str.equals("update_tree") || str.equals("primal_bea_mpp") || str.equals("primal_iminus")
+    // str.equals("refresh_potential") || str.equals("flow_cost") || str.equals("price_out_impl") || 
+    // str.equals("refresh_neighbour_lists") || str.equals("primal_net_simplex") || str.equals("suspend_impl")
+    
+    // milc
+    // str.equals("scalar_mult_add_su3_vector") || str.equals("mult_su3_an") || str.equals("mult_su3_mat_vec_sum_4dir")
+    // str.equals("add_su3_vector") || str.equals("gaussian_rand_no") || str.equals("check_su3")
+    // str.equals("scalar_mult_su3_vector") || str.equals("sub_su3_vector") || str.equals("dslash_fn_on_temp_special") || 
+    // str.equals("dslash_fn")
+
+    //gobmk
+    // str.equals("undo_trymove") || str.equals("findlib") || str.equals("assimilate_string") ||
+    // str.equals("remove_liberty") || str.equals("chainlinks2") || str.equals("hashdata_invert_stone") ||
+    // // str.equals("approxlib") || str.equals("update_liberties") || str.equals("break_chain_moves") ||
+    // // str.equals("hashnode_search") || str.equals("extend_neighbor_string") || str.equals("attack2")
+
+    //hmmer 
+    // str.equals("Gaussrandom") || str.equals("RandomSequence") || str.equals("DigitizeSequence") ||
+    // str.equals("P7Viterbi") || str.equals("DegenerateSymbolScore") || str.equals("ResizePlan7Matrix")
+
+    //sjeng 
+    // str.equals("push_slidE") || str.equals("setup_attackers") || str.equals("remove_one")
+    // str.equals("order_moves") || str.equals("is_attacked") || str.equals("std_eval") ||
+    // str.equals("findlowest") || str.equals("see") || str.equals("qsearch") 
+    //need more
+    //mc sjeng
+    // str.equals("remove_one") || str.equals("is_attacked") || str.equals("std_eval")
+    // str.equals("f_in_check") || str.equals("search") || str.equals("comp_to_san") ||
+    // str.equals("post_thinking") || str.equals("stringize_pv") || str.equals("reset_piece_square")
+
+    //lib.
+    // str.equals("quantum_toffoli") || str.equals("quantum_sigma_x") || str.equals("quantum_cnot") ||
+    // str.equals("test_sum") || str.equals("madd") || str.equals("quantum_swaptheleads")
+    // str.equals("quantum_cond_phase") || str.equals("quantum_gate1") || str.equals("quantum_state_collapse")
+
+    //sphinx3 
+    // str.equals("subvq_mgau_shortlist") || str.equals("hmm_clear") || str.equals("fe_fft")
+    // str.equals("fe_spec_magnitude") || str.equals("lextree_enter") || str.equals("utt_word_trans")
+    // str.equals("kb_lextree_active_swap") || str.equals("heap_destroy") || str.equals("approx_cont_mgau_frame_eval")
+    // need more
+
+    //nab 
+    // str.equals("gaussa") || str.equals("NAB_initatom") || str.equals("preadln")  ||
+    // str.equals("copyresidue") || str.equals("mme34") || str.equals("nbond") ||
+    // str.equals("egb") || str.equals("readparm") || str.equals("skipeoln")
+    
+
+    //xz
+    str.equals("load64") || str.equals("sha_compress") || str.equals("spec_mem_fwrite") ||
+    str.equals("store64") || str.equals("lzma_vli_size") || str.equals("sha_done")
+    // str.equals("encoder_find") || str.equals("spec_mem_sum") || str.equals("uncompressStream") ||
+    // str.equals("compare_sum") || str.equals("spec_mem_load") || str.equals("compressStream")
+
+    // x264 todo
+    // str.equals("quant_trellis_cabac") || str.equals("x264_macroblock_load_pic_pointers") || str.equals("copy_column8") ||
+    // str.equals("x264_cabac_putbyte") || str.equals("x264_macroblock_cache_load") || str.equals("x264_slicetype_mb_cost") ||
+    // str.equals("x264_mb_predict_mv_direct16x16") || str.equals("x264_macroblock_encode_skip") || str.equals("x264_macroblock_analyse") ||
+    // str.equals("x264_mb_analyse_inter_p8x8_mixed_ref") || str.equals("plane_expand_border") || str.equals("x264_macroblock_encode")
+
+
+    ) {
+        return true;
+    }
     return false;
 }
 

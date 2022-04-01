@@ -253,6 +253,7 @@ void PDGAnalysis::constructEdgesFromAliases(PDG *pdg, Module &M) {
         //check if the function has a body
         if (F.empty()) continue;
         if (movecLibFunction.count(F.getName())) continue;
+        if (softboundcetsLibFunction.count(F.getName())) continue;
         // errs() << "--PDGAnalysis-222: " << F.getName() << "\n";
         //add the edges to the PDG
         constructEdgesFromAliasesForFunction(pdg, F);
@@ -306,6 +307,7 @@ void PDGAnalysis::constructEdgesFromControl(PDG *pdg, Module &M) {
         //fetch the next function with a body
         if (F.empty()) continue;
         if (movecLibFunction.count(F.getName())) continue;
+        if (softboundcetsLibFunction.count(F.getName())) continue;
         //errs() << "--PDGAnalysis-277: " << F.getName() << "\n";
         //compute the control dependences of the function based on its post-dominator tree
         this->constructEdgesFromControlForFunction(pdg, F);

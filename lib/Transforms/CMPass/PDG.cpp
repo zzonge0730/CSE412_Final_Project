@@ -11,6 +11,7 @@ PDG::PDG(Module &M) {
     for (auto &F : M) {
         if (F.isDeclaration()) continue;
         if (movecLibFunction.count(F.getName())) continue;
+        if (softboundcetsLibFunction.count(F.getName())) continue;
         //filter movec lib function  and movec wrapperfunction
         // StringRef funcName = F.getName();
         // if (funcName.startswith("_RV_") && (!funcName.equals("_RV_main"))) {
