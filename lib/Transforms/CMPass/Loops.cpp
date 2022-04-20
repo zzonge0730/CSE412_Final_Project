@@ -165,7 +165,7 @@ bool Loops::runOnModule(Module &M) {
             //for now, we only consider the outer most loop
             //that's to say, the nest level  is 1
             if (ls->getNestingLevel() == 1) {
-                PDG * wholePdg = this->pdgAnalysis->getPDG();
+                // PDG * wholePdg = this->pdgAnalysis->getPDG();
                 PDG * loopPDG = loop->getLoopPDG();
                 Function * loopFunc = ls->getFunction();
                 PDG * loopFuncPDG = this->pdgAnalysis->getFunctionPDG(*loopFunc);
@@ -517,7 +517,7 @@ bool Loops::runOnModule(Module &M) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                             #if SafeC
                             if (IsSafeCheckCallForSafeC(CI)) {
-                                if (countCoin < 1 && IsIntraTaskConsideredForSafeC(CI)) { // 4 for sb-2mm
+                                if (countCoin < 1 && IsIntraTaskConsideredForSafeC(CI)) { // 1 for safec-2mm
                                     safecheckCallInstDoNotInLoopBody.insert(&I);
                                     countCoin++;   
                                 }
@@ -532,7 +532,7 @@ bool Loops::runOnModule(Module &M) {
                             }
                             #else
                             if (IsSafeCheckCall(CI)) {
-                                if (countCoin < 4 && IsIntraTaskConsideredForSB(CI)) {
+                                if (countCoin < 0 && IsIntraTaskConsideredForSB(CI)) {// 4 for sb-2mm
                                     safecheckCallInstDoNotInLoopBody.insert(&I);
                                     countCoin++;   
                                 }

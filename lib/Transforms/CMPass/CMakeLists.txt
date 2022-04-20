@@ -32,7 +32,7 @@ add_llvm_library( CMPass SHARED
     # Parallelizer.cpp
     PDG.cpp
     PDGAnalysis.cpp
-    SanRazorPass.cpp
+    # SanRazorPass.cpp
     ScalarEvolutionDelinearization.cpp
     ScalarEvolutionReferencer.cpp
     SCC.cpp
