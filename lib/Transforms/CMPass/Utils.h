@@ -21,7 +21,7 @@ bool IsSafeCheckCallStoreForSafeC(CallInst *CI);
 bool IsSafeCheckCallForMovec(CallInst *CI);
 bool IsSafeCheckCallForSafeC(CallInst *CI);
 bool IsIntraTaskConsideredForSB(CallInst *CI);
-bool IsIntraTaskConsideredForMC(CallInst * CI);
+bool IsIntraTaskConsideredForMC(CallInst *CI);
 bool IsIntraTaskConsideredForSafeC(CallInst *CI);
 bool IsSafeCheckFun(StringRef funcName);
 bool IsConsideredFunForInterTask(Function &F);
@@ -29,21 +29,21 @@ bool IsConsideredFunForInterTask(Function &F);
 bool IsEmittingInst(Instruction &I);
 bool IsMemAccessInst(Instruction &I);
 
-bool isAllocator(CallInst * callInst);
-bool isDeallocator(CallInst * callInst);
+bool isAllocator(CallInst *callInst);
+bool isDeallocator(CallInst *callInst);
 
-bool isReallocator (CallInst * callInst);
+bool isReallocator (CallInst *callInst);
 
-Value * getAllocatedObject (CallInst * callInst);
+Value * getAllocatedObject (CallInst *callInst);
 
-Value * getFreedObject (CallInst * callInst);
+Value * getFreedObject (CallInst *callInst);
 
-uint32_t getSafeCheckCost(Instruction * callInst);
+uint32_t getSafeCheckCost(Instruction *callInst);
 uint32_t getSpawnableCost();
-uint32_t getOriginalCost(Instruction * start, Instruction * end);
+uint32_t getOriginalCost(Instruction *start, Instruction *end);
 bool IsSafeCheckCallForLoopFree(CallInst *CI);
-bool instHappensBefore(Instruction * inst, Instruction * final);
-Instruction * getNextInstruction(Instruction * I, BasicBlock *BB);
+bool instHappensBefore(Instruction *inst, Instruction *final);
+Instruction * getNextInstruction(Instruction *I, BasicBlock *BB);
 
 // template<typename T, typename... Args>
 // std::unique_ptr<T> make_unique(Args&&... args) {
