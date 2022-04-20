@@ -11,7 +11,7 @@ class ScalarEvolutionDelinearization {
 public:
 
     /*
-    * TODO: This is from lib/Analysis/ScalarEvolution.cpp from LLVM 11 extracted here as this was implemented on LLVM 9
+    * This is from lib/Analysis/ScalarEvolution.cpp from LLVM 11 extracted here
     * Once on LLVM 11, just use the API directly instead of this hack
     */
     static bool getIndexExpressionsFromGEP(
