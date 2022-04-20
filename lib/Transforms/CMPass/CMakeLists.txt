@@ -4,14 +4,14 @@ add_llvm_library( CMPass SHARED
     DataFlowAnalysis.cpp
     DataFlowEngine.cpp
     DataFlowResult.cpp
-    DecisionMaker.cpp
+    # DecisionMaker.cpp
     DOALL.cpp
     DOALLTask.cpp
     DominatorSummary.cpp
     EnvBuilder.cpp
     # Heuristics.cpp
     # Hot.cpp
-    IdentifyPass.cpp
+    # IdentifyPass.cpp
     InductionVariables.cpp
     InterTask.cpp
     InvariantManager.cpp
@@ -40,7 +40,7 @@ add_llvm_library( CMPass SHARED
     SCCDAG.cpp
     SCCDAGAttrs.cpp
     StayConnectedNestedLoopForest.cpp
-    Transformer.cpp
+    # Transformer.cpp
     Utils.cpp
 )
 # set_target_properties( CMPass 
