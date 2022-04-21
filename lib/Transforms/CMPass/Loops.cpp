@@ -146,9 +146,6 @@ bool Loops::runOnModule(Module &M) {
             //     continue;
             // }
 
-            //parallelize the current loop
-            // auto loopIsParallelized = this->parallelizeLoop(loop, doall);
-
             //print loop PDG
             
             // errs() << "loopID: " << loopID << " 's pdg: " <<"\n";
@@ -1501,67 +1498,6 @@ std::vector<LoopDependenceInfo *> Loops::selectTheOrderOfLoopsToParallelize(Stay
     errs() << "Parallelizer: LoopSelector: End\n";
 
     return selectedLoops;
-}
-
-bool Loops::parallelizeLoop(LoopDependenceInfo * LDI, DOALL& doall) {
-    assert(LDI != nullptr);
-
-    //fetch the loop header
-    auto loopStructure = LDI->getLoopStructure();
-    auto loopHeader = loopStructure->getHeader();
-    auto loopPreHeader = loopStructure->getPreHeader();
-
-    //fetch the loop function
-    auto loopFunc = loopStructure->getFunction();
-
-    errs() << "ParallelizeLoop...\n";
-    errs() << "ParallelizeLoop: Function = " << loopFunc->getName() << "\n";
-    errs() << "ParallelizeLoop: LoopID: " << LDI->getID() << " loopStructureID: " << loopStructure->getID() << " = " << *loopHeader->getFirstNonPHI() << "\n";
-    errs() << "ParallelizeLoop: Nesting Level = " << loopStructure->getNestingLevel() << "\n";
-    errs() << "Parallelizer: Number of threads to extrac: "  << LDI->getMaxCoreNumber() << "\n";
-
-    //parallelize the loop
-    bool codeModified = false;
-    if (doall.canBeAppliedToLoop(LDI)) {
-        doall.reset();
-        codeModified = doall.apply(LDI);
-        errs() << "after doall apply...\n";
-    }
-
-    if (!codeModified) {
-        errs() << "Parallelizer: Exit(no code midified)\n";
-        return false;
-    }
-
-    //fetch the enviroment array where the exit block ID has been stored
-    // Value * envArray = doall.getEnvArray();
-    // assert(envArray != nullptr);
-
-    // //fetch entry and exit point executed by the parallelized loop
-    // BasicBlock * entryPoint = doall.getLoopEntryPoint();
-    // BasicBlock * exitPoint = doall.getLoopExitPoint();
-    // assert(entryPoint != nullptr && exitPoint != nullptr);
-
-
-
-    // //the loop has been parallelized
-    // //link the parallelized loop within the original functio that includes the sequentail loop
-    // auto exitIndex = cast<Value>(ConstantInt::get(IntegerType::get(this->program->getContext(), 64), LDI->loopEnviroment->indexOfExitBlockTaken()));
-    // auto loopExitBlocks = loopStructure->getLoopExitBasicBlocks();
-    // this->linkTransformedLoopToOriginalFunction(
-    //     loopFunc->getParent(),
-    //     loopPreHeader,
-    //     entryPoint,
-    //     exitPoint,
-    //     envArray,
-    //     exitIndex,
-    //     loopExitBlocks
-    // );
-
-    errs() << "final Module: " << *this->program << "\n";
-
-    errs() << "parallelizeLoop: Exit\n";
-    return true;
 }
 
 void Loops::linkTransformedLoopToOriginalFunction(

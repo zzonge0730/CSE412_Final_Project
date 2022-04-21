@@ -5,7 +5,7 @@ add_llvm_library( CMPass SHARED
     DataFlowEngine.cpp
     DataFlowResult.cpp
     # DecisionMaker.cpp
-    DOALL.cpp
+    # DOALL.cpp
     DOALLTask.cpp
     DominatorSummary.cpp
     EnvBuilder.cpp

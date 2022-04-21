@@ -7,7 +7,6 @@
 #include "PDGAnalysis.h"
 #include "DominatorSummary.h"
 #include "StayConnectedNestedLoopForest.h"
-#include "DOALL.h"
 #include "LoopFreeTask.h"
 #include "Utils.h"
 #include "llvm/Analysis/CallGraph.h"
@@ -53,8 +52,6 @@ private:
     DominatorSummary * getDominators(Function * f);
 
     std::vector<LoopDependenceInfo *> selectTheOrderOfLoopsToParallelize(StayConnectedNestedLoopForestNode * tree);
-
-    bool parallelizeLoop(LoopDependenceInfo * LDI, DOALL& doall);
 
     void linkTransformedLoopToOriginalFunction(
     Module * M,
