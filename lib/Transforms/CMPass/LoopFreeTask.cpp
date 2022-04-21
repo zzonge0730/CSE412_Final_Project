@@ -25,31 +25,6 @@ void LoopFreeTask::setJoinFunc(Constant * joinF) {
 
 void LoopFreeTask::transform() {
 
-    // if (maxProfitRes.size() == 0) return;
-
-    // Instruction * lastLoc = nullptr;
-    // std::vector<Instruction *> groupedSafeChecks;
-    // for (int i = 0; i < maxProfitRes.size(); i++) {
-    //     Instruction * loc = maxProfitRes[i];
-    //     if (lastLoc == nullptr) {
-    //         lastLoc = loc;
-    //         groupedSafeChecks.push_back(this->safeCheckVector[i]);
-    //     } else {
-    //         if (lastLoc == loc) { // can be merged
-    //             //
-    //             groupedSafeChecks.push_back(this->safeCheckVector[i]);
-    //         } else {
-    //             SafeCheckTobeMerged(std::make_pair(groupedSafeChecks, loc));
-    //             groupedSafeChecks.clear();
-    //             lastLoc = loc;
-    //             groupedSafeChecks.push_back(this->safeCheckVector[i]);
-    //         }
-    //     }
-    // }
-    // if (groupedSafeChecks.size() != 0) {
-    //     SafeCheckTobeMerged(std::make_pair(groupedSafeChecks, this->safeCheckVector.back()));
-    // }
-
     SafeCheckTobeMerged();
     
 }

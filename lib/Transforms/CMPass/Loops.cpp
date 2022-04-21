@@ -125,29 +125,8 @@ bool Loops::runOnModule(Module &M) {
         for (auto loop : loopsToParallelize) {
             //check if we can parallelize the loop
             auto ls = loop->getLoopStructure();
-
-            // errs() << "----loopStructure By sort----\n";
-            // std::string str;
-            // raw_string_ostream ros(str);
-            // ls->print(ros);
-            // ros.flush();
-            // errs() << str << "\n";
-            // auto safe = true;
-            // for (auto BB : ls->getBasicBlocks()) {
-            //     if (modifiedBBs[BB]) {
-            //         safe = false;
-            //         break;
-            //     }
-            // }
-
             auto loopID = ls->getID();
-            // if (!safe) {
-            //     errs() << "Parallelizer: LoopID:" << loopID << "cannot be parallelized because one of its parent has been parallelized already...\n";
-            //     continue;
-            // }
-
             //print loop PDG
-            
             // errs() << "loopID: " << loopID << " 's pdg: " <<"\n";
             // std::string loopStr;
             // raw_string_ostream loopRos(loopStr);
@@ -155,8 +134,6 @@ bool Loops::runOnModule(Module &M) {
             // loopRos.flush();
             // errs() << loopStr << "\n";
             errs() << "----------------\n";
-
-
 
             //determine whether the curret loop should be paralleled
             //for now, we only consider the outer most loop
@@ -171,11 +148,6 @@ bool Loops::runOnModule(Module &M) {
                     // errs() << "---BB: " << *BB << "\n";
                     allLoopBasicBlocks.insert(BB);
                 }
-
-
-                // for (auto BB : ls->getLoopExitBasicBlocks()) {
-                //     errs() << "---exit: " << *BB <<"\n";
-                // }
 
                 //define the signature of the task
                 //should be modified later on, may be dynamically decided
@@ -228,23 +200,6 @@ bool Loops::runOnModule(Module &M) {
                     // analysis which variable we can't simply used in the new loop func
                     // and need further alloca a block of extra memory and init it
                     Value * liveIn = loop->loopEnviroment->producerAT(envIndex);
-                    // for (auto subedge : wholePdg->getEdges()) {
-                    //old
-                    // for (auto subedge : loopFuncPDG->getEdges()) {
-                    //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                    //     auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-                    //     if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(liveIn) ) {
-                    //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                    //             if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && ls->isIncluded(cast<Instruction>(toNodeSubT))) {
-                    //                 // means this liveInVar need alloca memory
-                    //                 errs() << "liveIn: " << *liveIn << " need alloca memory.\n";
-                    //                 liveInInitVal[liveIn] = nullptr; 
-                    //             }
-                    //         }
-                    //     }
-                    // }
-
                     //new: more effective way to get the needed val, instead of naively traverse
                     //fetch the DGNode
                     auto fromNode = loopFuncPDG->fetchNode(liveIn);
@@ -267,36 +222,6 @@ bool Loops::runOnModule(Module &M) {
                 
                 for (auto pair : liveInInitVal) {
                     StoreInst * theLastStoreInst = nullptr;
-                    //old
-                    // for (auto subedge : wholePdg->getEdges()) {
-                    // for (auto subedge : loopFuncPDG->getEdges()) {    
-                    //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                    //     auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-                    //     if (cast<Instruction>(fromNodeSubT) == cast<Instruction>(pair.first) ) {
-                    //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                    //             if (isa<StoreInst>(cast<Instruction>(toNodeSubT)) && !ls->isIncluded(cast<Instruction>(toNodeSubT))) { // 
-                    //                 // means this liveInVar need init value
-                    //                 Value * storeVal = cast<StoreInst>(toNodeSubT)->getOperand(0);
-                    //                 // find the last toNodeSubT happens before wheretoInsertFunc
-                    //                 // and not in loopLatch BB
-                    //                 if (instHappensBefore(cast<StoreInst>(toNodeSubT), whereToInsertFunc) && 
-                    //                 loopPreHeaders.count(cast<StoreInst>(toNodeSubT)->getParent()) > 0) {
-                    //                     if (theLastStoreInst == nullptr) {
-                    //                         theLastStoreInst = cast<StoreInst>(toNodeSubT);
-                    //                         liveInInitVal[pair.first] = storeVal;
-                    //                     } else {
-                    //                         if (!instHappensBefore(cast<StoreInst>(toNodeSubT), theLastStoreInst)) {
-                    //                             theLastStoreInst = cast<StoreInst>(toNodeSubT);
-                    //                             liveInInitVal[pair.first] = storeVal;
-                    //                         }
-                    //                     }
-                                        
-                    //                 }
-                    //             }
-                    //         }
-                    //     }
-                    // }
                     //new more effective
                     auto fromNode = loopFuncPDG->fetchNode(pair.first);
                     if (fromNode != nullptr) {
@@ -346,21 +271,6 @@ bool Loops::runOnModule(Module &M) {
                     while(!workListForBitcast.empty()) {
                         Instruction * inst = *workListForBitcast.begin();
                         workListForBitcast.erase(inst);
-                        //old
-                        // for (auto subedge : wholePdg->getEdges()) {
-                        // for (auto subedge : loopFuncPDG->getEdges()) {
-                        //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                        //     auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-                        //     if (cast<Instruction>(toNodeSubT) == inst ) {
-                        //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-                        //             if (related.count(cast<Instruction>(fromNodeSubT)) <= 0 && !ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                        //                 workListForBitcast.insert(cast<Instruction>(fromNodeSubT));
-                        //                 related.insert(cast<Instruction>(fromNodeSubT));
-                        //             }
-                        //         }
-                        //     }
-                        // }
 
                         //new more effective
                         auto toNode = loopFuncPDG->fetchNode(inst);
@@ -435,33 +345,6 @@ bool Loops::runOnModule(Module &M) {
                 while (!workListForCustFunCode.empty()) {
                     Instruction * inst = *workListForCustFunCode.begin();
                     workListForCustFunCode.erase(inst);
-                    //old
-                    // for (auto edge : loopPDG->getEdges()) {
-                    //     Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
-                    //     Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
-
-                    //     if (toNodeInst == inst) {
-                    //         if (edge->isMustDependence() && 
-                    //         edge->dataDepToString() == "RAW") {
-                    //             if (customedFunRelatedCodeInLoop.count(fromNodeInst) <= 0 && ls->isIncluded(fromNodeInst)) {
-                    //                 workListForCustFunCode.insert(fromNodeInst);
-                    //                 customedFunRelatedCodeInLoop.insert(fromNodeInst);
-                    //             }
-                                
-                    //         }
-                    //     }
-
-                    //     if (fromNodeInst == inst) {
-                    //         if (edge->isMustDependence() && 
-                    //         edge->dataDepToString() == "RAW") {
-                    //             if (customedFunRelatedCodeInLoop.count(toNodeInst) <= 0 && ls->isIncluded(toNodeInst)) {
-                    //                 workListForCustFunCode.insert(toNodeInst);
-                    //                 customedFunRelatedCodeInLoop.insert(toNodeInst);
-                    //             }
-                                
-                    //         }   
-                    //     }
-                    // }
                     //new more effective
                     auto node = loopPDG->fetchNode(inst);
                     if (node != nullptr) {
@@ -572,41 +455,7 @@ bool Loops::runOnModule(Module &M) {
                     // workListForCmpInstRelated.erase(inst);
                     Instruction * inst = *workListForBrInstRelated.begin();
                     workListForBrInstRelated.erase(inst);
-                    //old
-                    // for (auto edge : loopPDG->getEdges()) {
-                    //     Instruction * fromNodeInst = cast<Instruction>(edge->getOutgoingNode()->getT());
-                    //     Instruction * toNodeInst = cast<Instruction>(edge->getIncomingNode()->getT());
-                    //     if (toNodeInst == inst) {
-                    //         if (edge->isMustDependence() && 
-                    //         edge->dataDepToString() == "RAW") {
-                    //             // if (cmpInstRelated.count(fromNodeInst) <= 0
-                    //             // && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
-                    //             //     cmpInstRelated.insert(fromNodeInst);
-                    //             //     workListForCmpInstRelated.insert(fromNodeInst);
-                    //             // }
-                    //             if (brInstRelated.count(fromNodeInst) <= 0
-                    //             && ls->isIncluded(fromNodeInst) && (fromNodeInst->getParent() == inst->getParent())) {
-                    //                 brInstRelated.insert(fromNodeInst);
-                    //                 workListForBrInstRelated.insert(fromNodeInst);
-                    //             }
-                    //         }
-                    //     }
-                    //     if (fromNodeInst == inst) {
-                    //         if (edge->isMustDependence() && 
-                    //         edge->dataDepToString() == "RAW") {
-                    //             // if (cmpInstRelated.count(toNodeInst) <= 0
-                    //             // && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
-                    //             //     cmpInstRelated.insert(toNodeInst);
-                    //             //     workListForCmpInstRelated.insert(toNodeInst);
-                    //             // }
-                    //             if (brInstRelated.count(toNodeInst) <= 0
-                    //             && ls->isIncluded(toNodeInst) && (toNodeInst->getParent() == inst->getParent())) {
-                    //                 brInstRelated.insert(toNodeInst);
-                    //                 workListForBrInstRelated.insert(toNodeInst);
-                    //             }
-                    //         }
-                    //     }
-                    // }
+                    
                     //new more effective
                     auto node = loopPDG->fetchNode(inst);
                     if (node != nullptr) {
@@ -644,35 +493,6 @@ bool Loops::runOnModule(Module &M) {
                 for (auto callInst : safecheckCallInst) {
                     std::set<Instruction *> safeCheckInsts;
                     // std::set<Instruction *> workList; // for %base.load call_metadata_load and so on
-                    // to: callInst
-                    //from : 
-                    // for (auto subedge : wholePdg->getEdges()) { //wholePdg can be replaced with loopPDG
-                    //old
-                    // for (auto subedge : loopPDG->getEdges()) {    
-                    //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                    //     auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-                    //     if (cast<Instruction>(toNodeSubT) == callInst) {
-                    //         if (subedge->isMustDependence() && 
-                    //         subedge->dataDepToString() == "RAW") {
-                    //             // if is a liveInvars no need to be added
-                    //             if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) {
-                    //                 errs() << "--- " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
-                    //             } else {
-                                    
-                    //                 if (safeCheckInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                    //                     safeCheckInsts.insert(cast<Instruction>(fromNodeSubT));
-                    //                     // if (isa<LoadInst>(cast<Instruction>(fromNodeSubT))) { // %base.load = load xxx
-                    //                     //     workList.insert(cast<Instruction>(fromNodeSubT));
-                    //                     // }
-                    //                 }
-                                    
-                    //             }
-                                
-                    //         }
-                    //     }
-                    // }
-
                     //new more effective
                     auto toNode = loopPDG->fetchNode(callInst);
                     if (toNode != nullptr) {
@@ -698,29 +518,6 @@ bool Loops::runOnModule(Module &M) {
                     std::set<Instruction *> worklistForOriginalCodes;
                     std::set<Instruction *> allInstsToOneCall(safeCheckInsts.begin(), safeCheckInsts.end());
                     for (auto inst : safeCheckInsts) {
-                        // for (auto subedge : wholePdg->getEdges()) { // wholePdg can be replaced with loopPDG
-                        //old
-                        // for (auto subedge : loopPDG->getEdges()) {    
-                        //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                        //     auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-                        //     if (cast<Instruction>(toNodeSubT) == inst) {
-                        //         if (subedge->isMustDependence() && 
-                        //         subedge->dataDepToString() == "RAW") {
-                        //             // if is a liveInvars no need to be added
-                        //             if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
-                        //                 errs() << "^^^ " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
-                        //             } else {
-                        //                 if (allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                        //                     allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
-                        //                     worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
-                        //                 }
-                                            
-                        //             }                                
-                        //         }
-                        //     }
-                        // }
-
                         //new more effective
                         auto toNode = loopPDG->fetchNode(inst);
                         if (toNode != nullptr) {
@@ -746,26 +543,6 @@ bool Loops::runOnModule(Module &M) {
                         Instruction * inst = *worklistForOriginalCodes.begin();
                         worklistForOriginalCodes.erase(inst);
                         // for (auto subedge : wholePdg->getEdges()) {// wholePdg can be replaced with loopPDG
-                        //old
-                        // for (auto subedge : loopPDG->getEdges()) {
-                        //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-                        //     auto toNodeSubT = subedge->getIncomingNode()->getT();
-
-                        //     if (cast<Instruction>(toNodeSubT) == inst) {
-                        //         if (subedge->isMustDependence() && 
-                        //         subedge->dataDepToString() == "RAW") {
-                        //             // if is a liveInvars no need to be added
-                        //             if (loop->loopEnviroment->isLiveIn(fromNodeSubT)) { 
-                        //                 errs() << "*** " << *cast<Instruction>(fromNodeSubT) << " -is liveIn...\n";
-                        //             } else {
-                        //                 if ( allInstsToOneCall.count(cast<Instruction>(fromNodeSubT)) <= 0 && ls->isIncluded(cast<Instruction>(fromNodeSubT))) {
-                        //                     allInstsToOneCall.insert(cast<Instruction>(fromNodeSubT));
-                        //                     worklistForOriginalCodes.insert(cast<Instruction>(fromNodeSubT));
-                        //                 }
-                        //             }                                
-                        //         }
-                        //     }
-                        // }
 
                         //new more effective
                         auto toNode = loopPDG->fetchNode(inst);
@@ -981,38 +758,15 @@ bool Loops::runOnModule(Module &M) {
             //     << "Post Loop env " << count++ << ", producer:\t");
             //     errs() << "\n";
             // }
-
-            
-            // handle loop body --- remove the rendundant basicblock in loop latch
-
-
-
-            //determine where to insert this function
-
-            // create this function
-
-            //insert this function
-
-            //handle br relation between basicblocks
-
-
-            //keep track of the parallelization
-            // if (true) {
-            //     errs() << "Parallelizer: Loop " << loopID << " has been parallelized.\n";
-            //     modified = true;
-            //     for (auto bb : ls->getBasicBlocks()) {
-            //         modifiedBBs[bb] = true;
-            //     }
-            // }
         }
 
 
 
 
         //free the memory
-        // for (auto loop : loopsToParallelize) {
-        //     if (loop) delete loop;
-        // }
+        for (auto loop : loopsToParallelize) {
+            if (loop) delete loop;
+        }
 
     }
 
