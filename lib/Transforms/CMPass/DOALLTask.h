@@ -12,23 +12,17 @@ public:
 
     uint32_t getID(void) const;
 
-    Value * getTaskInstanceID(void) const;
 
     //Live-in values
     bool isAnOriginalLiveIn (Value *v) const ;
 
     Value * getCloneOfOriginalLiveIn (Value *o) const ;
 
-    std::unordered_set<Value *> getOriginalLiveIns (void) const ;
-
     void addLiveIn (Value *original, Value *internal) ;
 
     void removeLiveIn (Instruction *original);
 
     //Live-out instructions
-    bool doesOriginalLiveOutHaveManyClones (Instruction *I) const ;
-
-    std::unordered_set<Instruction *> getClonesOfOriginalLiveOut (Instruction *I) const ;
 
     void addLiveOut (Instruction *original, Instruction *internal) ;
 
@@ -74,27 +68,21 @@ public:
 
     BasicBlock * getLastBlock (uint32_t blockID) const ;
 
-    void tagBasicBlockAsLastBlock (BasicBlock *b) ;
-
     //Body
     Function * getTaskBody (void) const ;
 
     //Dependences with the outside code
     Value * getEnvironment (void) const ;
 
-    void extractFuncArgs(void);
-
     Value *chunkSizeArg, *coreArg, *numCoresArg;
     Value * envArg, *instanceIndexV;
 
     void setLoopHeader(BasicBlock * loopH);
-    // void setLoopLatch(BasicBlock * loopL);
     void setWhereToInsertFunc(Instruction * inst);
     void addLiveInVar(Value * liveIn);
     void setSafeCheckInstsNoInLoopBody(std::unordered_set<Instruction *> checkInsts);
     void setSafeCheckInstsInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> safecodes);
     void setAllInstsToOneCallInstInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> allinsts);    
-    // void transform();
     bool isOriginalLiveInVar(Value * v);
     void clearClones();
     void setLiveInInitVal(std::unordered_map<Value *, Value *> initMap);
@@ -102,7 +90,6 @@ public:
     void setLDI(LoopDependenceInfo * LDI);
     void splitLoop();
     void setOldLoopBody(std::unordered_set<BasicBlock *> oldBBs);
-    // void setCmpInstRelated(std::unordered_set<Instruction *> instSet);
     void setBrInstRelated(std::unordered_set<Instruction *> instSet);
     void setBitCastLiveInVarRelated(std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastMap);
     void setJoinFunc(Constant * joinF);
@@ -157,15 +144,11 @@ private:
     std::vector<Value *> genSpawnArgs(Module * M, Function * wrapperFunc);
 
     std::mt19937 loopSeed;
-    // std::vector<BasicBlock *> 
-    
-    // void doSplit();
 
     LoopDependenceInfo * LDI;
 
     bool instIsInLoopBody(Instruction * inst);
     bool instIsInAllInstsToOneCall(Instruction * inst);
-    // bool instIsInCmpInstRelated(Instruction * inst);
     bool instIsInBrInstRelated(Instruction * inst);
 
     bool hasStoreInstInNewLoopBody(Value * liveIn);
