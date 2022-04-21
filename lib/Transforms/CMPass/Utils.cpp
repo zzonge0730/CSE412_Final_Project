@@ -38,6 +38,20 @@ bool IsSafeCheckCallStoreForSafeC(CallInst *CI){
     return false;
 }
 
+bool IsSafeCheckCallStoreForMC(CallInst *CI){
+    if(CI->getCalledFunction()) {
+        StringRef callName = CI->getCalledFunction()->getName();
+        if( callName.equals("_RV_fmd_tbl_update_pmd") ||
+            callName.equals("_RV_pmd_tbl_update_pmd") ||
+            callName.equals("_RV_pmd_tbl_update_ptr") ||
+            callName.equals("_RV_pmd_tbl_update_fpmd") ||
+            callName.equals("_RV_pmd_tbl_update_sa")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsIntraTaskConsideredForSB(CallInst *CI) {
     if(CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();

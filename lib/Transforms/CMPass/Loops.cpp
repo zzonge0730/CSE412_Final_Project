@@ -383,7 +383,7 @@ bool Loops::runOnModule(Module &M) {
 
                 // std::srand(std::time(0)); //seed
                 std::unordered_set<Instruction *> safecheckCallInstDoNotInLoopBody;
-                bool coinFlag = true;
+                // bool coinFlag = true;
                 int countCoin = 0;
                 for (auto body : loopBody) {
                     // errs() << "loopBody: " << *body << "\n";
@@ -440,7 +440,6 @@ bool Loops::runOnModule(Module &M) {
                     // else coinFlag = true;
                 }
 
-                // if there is no safecheck call inst , don't do that 
                 if (giveUpFlag) {
                     delete task;
                     errs() << "this task we can not handle, because of metadata_store...\n";
@@ -764,9 +763,9 @@ bool Loops::runOnModule(Module &M) {
 
 
         //free the memory
-        for (auto loop : loopsToParallelize) {
-            if (loop) delete loop;
-        }
+        // for (auto loop : loopsToParallelize) {
+        //     if (loop) delete loop;
+        // }
 
     }
 

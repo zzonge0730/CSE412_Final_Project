@@ -24,9 +24,9 @@ PDG::PDG(Module &M) {
     //set the etnry node
     //"main" for asan and ubsan
     //"softboundcets_pseudo_main" for softboundcets
-    //"_RV_main" for movec
-    auto mainF = M.getFunction("softboundcets_pseudo_main");
-    // auto mainF = M.getFunction("main");
+    //"main" for movec
+    // auto mainF = M.getFunction("softboundcets_pseudo_main");
+    auto mainF = M.getFunction("main");
 
 
     assert(mainF != nullptr);

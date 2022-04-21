@@ -103,8 +103,10 @@ bool LoopsMovec::runOnModule(Module &M) {
         
         //store all loop preheaders
         std::unordered_set<BasicBlock *> loopPreHeaders;
+        std::unordered_set<BasicBlock *> loopLatchBBs;
         for (auto loop : loopsToParallelize) {
             loopPreHeaders.insert(loop->getLoopStructure()->getPreHeader());
+            loopLatchBBs.insert(loop->getLoopStructure()->getLatches().begin(), loop->getLoopStructure()->getLatches().end());
         }
         //parallelize the loops
         for (auto loop : loopsToParallelize) {
@@ -354,21 +356,32 @@ bool LoopsMovec::runOnModule(Module &M) {
                 std::unordered_set<Instruction *> brInstRelated;
 
                 // std::srand(std::time(0)); //seed
-                
+                std::unordered_set<Instruction *> safecheckCallInstDoNotInLoopBody;
+                int countCoin = 0;
+                bool tryGiveUpFlag = false; 
                 //identify which safe checks need to be parallellized
                 for (auto body : loopBody) {
                     // errs() << "loopBody: " << *body << "\n";
                     // bool flag = false;
                     // int coin = std::rand() % 100;
                     // if (coin >=0 && coin <=49 ) flag = true;
+                    countCoin = 0;
                     for (auto& I : *body) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                             
                             if (IsSafeCheckCallForMovec(CI)) {
+                                if (countCoin < 3 && IsIntraTaskConsideredForMC(CI)) {
+                                    safecheckCallInstDoNotInLoopBody.insert(&I);
+                                    countCoin++;
+                                }
                                 // if (flag) 
                                 safecheckCallInst.push_back(&I);
                                 
                                 //SafeCheckSet.insert(&I);
+                            }
+
+                            if (IsSafeCheckCallStoreForMC(CI)) {
+                                tryGiveUpFlag = true;
                             }
                         }
 
@@ -382,9 +395,11 @@ bool LoopsMovec::runOnModule(Module &M) {
                     }
                 }
 
-                
-
-
+                if (tryGiveUpFlag) {
+                    delete task;
+                    errs() << "this task we can not handle, because of metadata_store...\n";
+                    continue;
+                }
 
                 // get brInst related instructions
                 // std::unordered_set<Instruction *> workListForCmpInstRelated(cmpInstRelated.begin(), cmpInstRelated.end());
@@ -657,6 +672,21 @@ bool LoopsMovec::runOnModule(Module &M) {
                     continue;
                 }
 
+                std::unordered_set<Instruction*> notInLoopBody;
+                for (auto instcall : safecheckCallInstDoNotInLoopBody) {
+                    errs() << "instcall: " << *instcall << "\n";
+                    for (auto interninst : allInstsToOneCallInstInLoopBodyFinal.at(instcall)) {
+                        if (loopLatchBBs.count(interninst->getParent()) != 0) {
+                            continue;
+                        }
+                        errs() << "interninst: " << *interninst << "\n";
+                        notInLoopBody.insert(interninst);
+                    }
+                    notInLoopBody.insert(instcall);
+                }
+                task->setSafeCheckInstsNoInLoopBody(notInLoopBody);
+
+
                 // if there are some thread safe lib function in loop meta-operation codes, don't do that
                 bool filterFlag = false;
                 for (auto pair : allInstsToOneCallInstInLoopBodyFinal) {
@@ -731,7 +761,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 //         errs() << *I <<"\n";
                 //     }
                 // }
-                errs() << "^^^^^safeCheckInstsInLoopBodyAfterRemoved^^^^^\n";
+                // errs() << "^^^^^safeCheckInstsInLoopBodyAfterRemoved^^^^^\n";
                 // std::unordered_map<Instruction*, std::set<Instruction *>>::const_iterator iter2;
                 // for (iter2 = allInstsToOneCallInstInLoopBodyFinal.begin(); iter2 != allInstsToOneCallInstInLoopBodyFinal.end(); ++iter2) {
                 //     errs() << "--BB: " << *(iter2->first) << " has : " << iter2->second.size() << "\n";
@@ -740,7 +770,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 //         errs() << *I <<"\n";
                 //     }
                 // }
-                errs() << "^^^^^allInstsToOneCallInstInLoopBodyAfterRemoved^^^^^\n";
+                // errs() << "^^^^^allInstsToOneCallInstInLoopBodyAfterRemoved^^^^^\n";
             }
 
 
@@ -759,9 +789,9 @@ bool LoopsMovec::runOnModule(Module &M) {
         }
 
         //free the memory
-        for (auto loop : loopsToParallelize) {
-            if (loop) delete loop;
-        }
+        // for (auto loop : loopsToParallelize) {
+        //     if (loop) delete loop;
+        // }
 
     }
     #endif
@@ -1043,9 +1073,9 @@ bool LoopsMovec::runOnModule(Module &M) {
     //erase original safe check codes in original loop
     
     #if ENABLELOOP
-    // for (auto task : loopTasks) {
-    //     task->eraseSafeCheckCodes();
-    // }
+    for (auto task : loopTasks) {
+        task->eraseSafeCheckCodes();
+    }
     #endif
 
     #if ENABLELOOPFREE
