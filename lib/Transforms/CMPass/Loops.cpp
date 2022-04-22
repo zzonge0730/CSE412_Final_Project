@@ -1,6 +1,10 @@
 #include "Loops.h"
 
-#define SafeC 1
+#define SafeC 0
+
+#define ENABLELOOP 0
+
+#define ENABLELOOPFREE 1
 
 char Loops::ID = 0;
 
@@ -32,7 +36,9 @@ bool Loops::runOnModule(Module &M) {
 
     this->program = &M;
     this->pdgAnalysis = &getAnalysis<PDGAnalysis>();
-    
+    Constant * joinFunc = generateJoinFunc();
+
+    #if ENABLELOOP
     std::vector<LoopStructure *> * loopStructures = this->getLoopStructures();
 
     if (loopStructures->size() == 0) {
@@ -95,8 +101,6 @@ bool Loops::runOnModule(Module &M) {
         // };
         // tree->visitPreOrder(printTree);
     }
-
-    Constant * joinFunc = generateJoinFunc();
 
     std::unordered_set<BasicBlock *> allLoopBasicBlocks;
 
@@ -768,206 +772,360 @@ bool Loops::runOnModule(Module &M) {
         // }
 
     }
+    #endif 
 
-    // std::vector<LoopFreeTask *> loopFreeTasks;
-    // uint32_t id = 0;
-    // //TODO: loop free opt
-    // // get non loop basic blocks
-    // for (Function& F : *this->program) {
-    //     if (F.isDeclaration() || F.isIntrinsic() || F.empty()) continue;
-    //     if (F.getName().startswith("_spawn_loop_func_") || F.getName().startswith("_loop_func_") ) continue;
-    //     //get each functionPDG
-    //     PDG * functionPDG = new PDG(F);
+    #if ENABLELOOPFREE
+    //determine basicblocks in loop code
+    std::vector<LoopStructure *> * loopStructures = this->getLoopStructures();
+    std::unordered_set<BasicBlock *> allLoopBasicBlocks;
+    
+    //loop free opt
+    //loop free analysis
+    std::vector<LoopFreeTask *> loopFreeTasks;
+    uint32_t loopFreeId = 0;
+    
+    if (loopStructures->size() != 0) {
+        auto forest = this->organizeLoopsInTheirNestingForest(*loopStructures);
+        delete loopStructures;
+        
+        auto trees = forest->getTrees();
+        for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
+            //select the loop to parallelize
+            auto loopsToParallelize = this->selectTheOrderOfLoopsToParallelize(*treeIt); 
 
-    //     std::vector<Instruction *> safeCheckCallInstInNonLoopBody;
-    //     //safecheck - safecheckRelatedCode - 
-    //     //safechecks - Loc[xx, xx, xx]
-    //     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInNonLoopBody;
-    //     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckCallInstJoinPoints;
-    //     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsMoveRange;
-    //     for (BasicBlock& BB : F) {
-    //         if (allLoopBasicBlocks.count(&BB) > 0) continue;
-    //         // determine each safecheck 
-    //         for (Instruction& I : BB) {
-    //             if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-    //                 if (IsSafeCheckCallForLoopFree(CI)) {
-    //                     safeCheckCallInstInNonLoopBody.push_back(&I);
-    //                 }
-    //             }
-    //         }
-    //     }
+            for (auto loop : loopsToParallelize) {
+                auto ls = loop->getLoopStructure();
+                for (auto BB : ls->getBasicBlocks()) {
+                    allLoopBasicBlocks.insert(BB);
+                }
+            }
+        }
+    } else {
+        delete loopStructures;
+    }
 
-    //     //get safecheck related codes , joinpoints and locs
-    //     for (auto callInst : safeCheckCallInstInNonLoopBody) {
-    //         std::set<Instruction *> safeCheckRelatedInsts;
-    //         std::set<Instruction *> joinpoints;
-    //         for (auto subedge : functionPDG->getEdges()) {
-    //             auto fromNodeSubT = subedge->getOutgoingNode()->getT();
-    //             auto toNodeSubT = subedge->getIncomingNode()->getT();
 
-    //             if (cast<Instruction>(toNodeSubT) == callInst) {
-    //                 if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
-    //                     if (safeCheckRelatedInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && 
-    //                     callInst->getParent() == cast<Instruction>(fromNodeSubT)->getParent()) {
-    //                         safeCheckRelatedInsts.insert(cast<Instruction>(fromNodeSubT));
-    //                     }
-    //                 }
-    //             }
+    
+    std::vector<Function *> considerFunc;
+    
 
-    //             if (cast<Instruction>(fromNodeSubT) == callInst &&
-    //             subedge->dataDepToString() == "RAW") {
-    //                 if (fromNodeSubT != toNodeSubT) {
-    //                     joinpoints.insert(cast<Instruction>(toNodeSubT));
-    //                 }
-    //             }
-    //         }
+    // get non loop basic blocks
+    for (Function& F : *this->program) {
+        if (F.isDeclaration() || F.isIntrinsic() || F.empty()) continue;
+        if (softboundcetsLibFunction.count(F.getName())) continue;
+        //get the functionPDG
+        #if ZYYDEBUG
+        errs() << "considering Func: " << F.getName() << "\n";
+        considerFunc.push_back(&F);
+        #endif
+        PDG * funcPDG = this->pdgAnalysis->getFunctionPDG(F);
+
+        
+        //safecheck - safecheckRelatedCode - 
+        //safechecks - Loc[xx, xx, xx]
+
+        //get safeCheck in the non loop basicblocks
+        for (BasicBlock& BB : F) {
+
+            std::vector<Instruction *> safeCheckCallInstInNonLoopBody;
+            std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInNonLoopBody;
+            std::unordered_map<Instruction *, Instruction *> safeCheckCallInstJoinPoint;
+            std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsMoveRange;
             
-    //         safeCheckInstsInNonLoopBody[callInst] = safeCheckRelatedInsts;
-    //         safeCheckCallInstJoinPoints[callInst] = joinpoints;
+            // std::unordered_map<BasicBlock *, std::unordered_set<Instruction *>> safeCheckInNonLoopBB;
 
-    //         //joinpoints means the farthest location, if it is null, the join point is the last instruction of a function
-    //         //find the the forward most location
-    //         std::set<Instruction *> locs; // if it is null, the forward most is the entry point (should judge whether is a call or bitcast inst)
-    //         for (auto inst : safeCheckRelatedInsts) {
+            if (allLoopBasicBlocks.count(&BB) > 0) continue;
+            #if ZYYDEBUG
+            errs() << "considering BB: " << BB << "\n";
+            #endif
+            // determine each safecheck 
+            std::unordered_set<Instruction *> safeCheckNonLoop;
+            for (Instruction& I : BB) {
+                if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+                    if (IsSafeCheckCallForLoopFree(CI)) {
+                        safeCheckCallInstInNonLoopBody.push_back(&I);
+                        safeCheckNonLoop.insert(&I);
+                    }
+                }
+            }
+
+            //if there is no safecheck inst in the bb, continue it
+            if (safeCheckNonLoop.size() == 0) continue;
+
+            // safeCheckInNonLoopBB[&BB] = safeCheckNonLoop;
+        
+
+            //get safecheck related codes , joinpoints and locs
+            for (auto callInst : safeCheckCallInstInNonLoopBody) {
+                std::set<Instruction *> safeCheckRelatedInsts;
+                //set the default joint point to the end of the function
+                Instruction * joinpoint = nullptr;
+                for (BasicBlock& BB : *callInst->getParent()->getParent()) {
+                    for (Instruction& inst : BB) {
+                        if (isa<ReturnInst>(&inst)) {    
+                            joinpoint = (&(*(BB.getFirstInsertionPt())));
+                        }
+                    }
+                }
+                //old
+                // for (auto subedge : funcPDG->getEdges()) {
+                //     auto fromNodeSubT = subedge->getOutgoingNode()->getT();
+                //     auto toNodeSubT = subedge->getIncomingNode()->getT();
+
+                //     if (cast<Instruction>(toNodeSubT) == callInst) {
+                //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW") {
+                //             if (safeCheckRelatedInsts.count(cast<Instruction>(fromNodeSubT)) <= 0 && 
+                //             callInst->getParent() == cast<Instruction>(fromNodeSubT)->getParent()) {
+                //                 safeCheckRelatedInsts.insert(cast<Instruction>(fromNodeSubT));
+                //             }
+                //         }
+                //     }
+
+                //     if (cast<Instruction>(fromNodeSubT) == callInst &&
+                //     subedge->dataDepToString() == "RAW") {
+                //         if (fromNodeSubT != toNodeSubT) {
+                //             Instruction * toInst = cast<Instruction>(toNodeSubT);
+                //             if (joinpoint == nullptr) joinpoint = toInst; 
+                //             else {
+                //                 //happens before check
+                //                 if (instHappensBefore(toInst, joinpoint)) {
+                //                     joinpoint = toInst;
+                //                 }
+                //             }
+                            
+
+                //         }
+                //     }
+                // }
+
+                //new
+                auto node = funcPDG->fetchNode(callInst);
+                if (node != nullptr) {
+                    //as toNode 
+                    for (auto &edge : node->getIncomingEdges()) {
+                        if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                            auto fromNode = cast<Instruction>(edge->getOutgoingNode()->getT());
+                            if (safeCheckRelatedInsts.count(fromNode) <= 0 && 
+                            callInst->getParent() == fromNode->getParent()) {
+                                safeCheckRelatedInsts.insert(fromNode);
+                            }
+                        }
+                    }
+
+                    //as fromNode
+                    for (auto &edge : node->getOutgoingEdges()) {
+                        if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                            auto toNode = cast<Instruction>(edge->getIncomingNode()->getT());
+                            if (joinpoint == nullptr) joinpoint = toNode; 
+                            else {
+                                //happens before check
+                                if (instHappensBefore(toNode, joinpoint)) {
+                                    joinpoint = toNode;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 
-    //             for (auto subedge : functionPDG->getEdges()) {
-    //                 auto from = cast<Instruction>(subedge->getOutgoingNode()->getT());
-    //                 auto to = cast<Instruction>(subedge->getIncomingNode()->getT());
+                safeCheckInstsInNonLoopBody[callInst] = safeCheckRelatedInsts;
+                safeCheckCallInstJoinPoint[callInst] = joinpoint;
 
-    //                 if (to == inst) {
-    //                     if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW" &&
-    //                     from->getParent() == inst->getParent()) {
-    //                         locs.insert(from);
-    //                     }
-    //                 }
-    //             }
+                //joinpoints means the farthest location, if it is null, the join point is the last instruction of a function
+                //find the the forward most location
+                std::set<Instruction *> locs; // if it is null, the forward most is the entry point (should judge whether is a call or bitcast inst)
+                for (auto inst : safeCheckRelatedInsts) {
+                    
+                    // for (auto subedge : funcPDG->getEdges()) {
+                    //     auto from = cast<Instruction>(subedge->getOutgoingNode()->getT());
+                    //     auto to = cast<Instruction>(subedge->getIncomingNode()->getT());
 
-    //             if (isa<CallInst>(inst)) { //maybe __softboundcets_load_lock_shadow_stack or other like
-    //                 locs.insert(inst);
-    //             }
+                    //     if (to == inst) {
+                    //         if (subedge->isMustDependence() && subedge->dataDepToString() == "RAW" &&
+                    //         from->getParent() == inst->getParent()) {
+                    //             locs.insert(from);
+                    //         }
+                    //     }
+                    // }
+                    auto toNode = funcPDG->fetchNode(inst);
+                    if (toNode != nullptr) {
+                        for (auto &edge : toNode->getIncomingEdges()) {
+                            if (edge->isMustDependence() && edge->dataDepToString() == "RAW") {
+                                auto fromNode = cast<Instruction>(edge->getOutgoingNode()->getT());
+                                locs.insert(fromNode);
+                            }
+                        }
+                    }
 
-    //         }
-    //         safeCheckInstsMoveRange[callInst] = locs;
-    //     }
 
-    //     //create the loop free task, and set some info
-    //     for (BasicBlock& BB : F) {
-    //         if (allLoopBasicBlocks.count(&BB) > 0) continue;
+                    if (isa<CallInst>(inst)) { //maybe __softboundcets_load_lock_shadow_stack or other like
+                        locs.insert(inst);
+                    }
 
-    //         Insturction * taskJoinPoint = nullptr;
-    //         std::unordered_set<Instruction * > safeCheckCodeForOneTask;
+                }
+                safeCheckInstsMoveRange[callInst] = locs;
+            }
 
-    //         for (Instruction& I : BB) {
-    //             if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-    //                 if (IsSafeCheckCallForLoopFree(CI)) {
-    //                     if (taskJoinPoint == nullptr) {
-    //                         std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-    //                         if (joinpoints.size() == 0) {
-    //                             taskJoinPoint = BB.getTerminator();
-    //                         } else {
-    //                             bool flag = false;
-    //                             for (auto joinp : joinpoints) {
-    //                                 if (joinp->getParent() == &BB) {
-    //                                     taskJoinPoint = joinp;
-    //                                     flag = true;
-    //                                 }
-    //                             }
-    //                             if (!flag) taskJoinPoint = BB.getTerminator();
-    //                         }
-    //                         safeCheckCodeForOneTask.insert(&I);
-    //                     } else {
-    //                         if (instHappensBefore(&I, taskJoinPoint)) {
-    //                             std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-    //                             if (joinpoints.size() == 0) {
-    //                                 taskJoinPoint = BB.getTerminator();
-    //                             } else {
-    //                                 bool flag = false;
-    //                                 for (auto joinp : joinpoints) {
-    //                                     if (joinp->getParent() == &BB) {
-    //                                         if (!instHappensBefore(joinp, taskJoinPoint)) {
-    //                                             taskJoinPoint = joinp;
-    //                                         }
-    //                                         flag = true;
-    //                                     }
-    //                                 }
-    //                                 if (!flag) {
-    //                                     taskJoinPoint = BB.getTerminator();
-    //                                 }
-    //                             }
-    //                             safeCheckCodeForOneTask.insert(&I);
-    //                         } else {
-    //                             //a new task
-    //                             LoopFreeTask *loopFreeTask = new LoopFreeTask(id++, this->program);
-    //                             loopFreeTask->setSafeCheckCodes(safeCheckCodeForOneTask);
-    //                             loopFreeTask->setInfo( safeCheckInstsInNonLoopBody,
-    //                             safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
-    //                             loopFreeTask->setJoinPoint(taskJoinPoint);
-    //                             loopFreeTask->setTargetBB(&BB);
-        //             loopFreeTask->setJoinFunc(joinFunc);
-    //                             loopFreeTasks.push_back(loopFreeTask);
-    //                             safeCheckCodeForOneTask.clear();
+            errs() << "--after get safecheck related codes , joinpoints and\n";
 
-    //                             std::set<Instruction *> joinpoints = safeCheckCallInstJoinPoints.at(&I);
-    //                             if (joinpoints.size() == 0) {
-    //                                 taskJoinPoint = BB.getTerminator();
-    //                             } else {
-    //                                 bool flag = false;
-    //                                 for (auto joinp : joinpoints) {
-    //                                     if (joinp->getParent() == &BB) {
-    //                                         if (!instHappensBefore(joinp, taskJoinPoint)) {
-    //                                             taskJoinPoint = joinp;
-    //                                         }
-    //                                         flag = true;
-    //                                     }
-    //                                 }
-    //                                 if (!flag) {
-    //                                     taskJoinPoint = BB.getTerminator();
-    //                                 }
-    //                             }
-    //                             safeCheckCodeForOneTask.insert(&I);
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
+            // enumerate all tasks combinations for each basic block
+            // calculate each combination cost
+            // choose the min cost task combination and create the loop free task
+            std::vector<Instruction*> vec;
+            vec.assign(safeCheckNonLoop.begin(), safeCheckNonLoop.end());
+            errs() << "vec size: " << vec.size() << "\n";
+            std::vector<std::pair<Instruction*, Instruction*>> minCostPairVec = {};
+            std::vector<std::vector<std::pair<Instruction*, Instruction*>>> vecvecPair;
+            if (vec.size() <= 10) {
+                //permutation all combinations and group two insts as one pair which can match the cost model to cal cost 
+                do {
+                    std::vector<std::pair<Instruction*, Instruction*>> vp;
+                    for (int i = 0; i < vec.size(); i += 2) {
+                        int j = i + 1;
+                        if (j < vec.size()) {
+                            vp.push_back(std::make_pair(vec[i], vec[j]));
+                        } else {
+                            vp.push_back(std::make_pair(vec[i], nullptr));
+                        }
+                    }
+                    vecvecPair.push_back(vp);
+                } while (next_permutation(vec.begin(), vec.end()));
 
-    //         if (safeCheckCodeForOneTask.size() != 0) {
-    //             //a new task
-    //             LoopFreeTask *loopFreeTask = new LoopFreeTask(id++, this->program);
-    //             loopFreeTask->setSafeCheckCodesForOneTask(safeCheckCodeForOneTask);
-    //             loopFreeTask->setInfo(safeCheckCallInstJoinPoints, safeCheckInstsMoveRange);
-    //             loopFreeTask->setTargetBB(&BB);
-    //             loopFreeTask->setJoinPoint(BB.getTerminator());
-    //             loopFreeTask->setJoinFunc(joinFunc);
-    //             loopFreeTasks.push_back(loopFreeTask);
-    //         }
+                uint32_t minCost = calBaselineCost(vec); // baseline no merge
+                
+                //cal cost and choose the minimal cost pair vec
+                for (auto item : vecvecPair) {
+                    uint32_t curCost = 0;
+                    for (auto pair : item) {
+                        curCost += calCost(pair, safeCheckCallInstJoinPoint);
+                    }
 
-    //     }
+                    if (curCost <= minCost) {
+                        minCost = curCost;
+                        minCostPairVec.assign(item.begin(), item.end());
+                    }
+                }
+            }
 
-    // }
+            // A B C D E
+            // AB means A merges back to B
+            // BA means B merges forward to A
+            //create loop free task
+            //new lookfreetask object
+            //set safecheck codes
+            //set join points
+            //
+            #if ZYYDEBUG
+            errs() << "---964---\n";
+            #endif
+            if (minCostPairVec.empty()) {//use baseline version
+                // for (int i = 0; i < vec.size(); i++) {
+                //     Instruction * curInst = vec[i];
+
+                // }
+                std::vector<Instruction*> instSet{vec};
+                LoopFreeTask * lftask = new LoopFreeTask(loopFreeId++, this->program);
+                lftask->setSafeCheckCodesForOneTask(instSet);
+                
+                Instruction * jpt = safeCheckCallInstJoinPoint.at(safeCheckCallInstInNonLoopBody[safeCheckCallInstInNonLoopBody.size()-1]);
+                
+                lftask->setJoinPoint(jpt);
+                
+                // std::set<Instruction*> relatedInsts = safeCheckInstsInNonLoopBody.at(safeCheckCallInstInNonLoopBody[safeCheckCallInstInNonLoopBody.size()-1]);
+                lftask->setCreatePt(safeCheckCallInstInNonLoopBody[safeCheckCallInstInNonLoopBody.size()-1]);
+                
+                lftask->setJoinFunc(joinFunc);
+
+                loopFreeTasks.push_back(lftask);
+
+            } else {//use optimized version
+                for (int i = 0; i < minCostPairVec.size(); i++) {
+                    std::pair<Instruction*, Instruction*> curInstPair = minCostPairVec[i];
+                    Instruction * instFirst = curInstPair.first;
+                    Instruction * instSecond = curInstPair.second;// instSecond may be a nullptr
+                    LoopFreeTask * lftasks = new LoopFreeTask(loopFreeId++, this->program);
+                    if (instSecond != nullptr) {
+                        std::vector<Instruction*> instSet{instFirst, instSecond};
+                        
+                        lftasks->setSafeCheckCodesForOneTask(instSet);
+                        
+                        Instruction * jpF = safeCheckCallInstJoinPoint.at(instFirst);
+                        Instruction * jpS = safeCheckCallInstJoinPoint.at(instSecond);
+                        if (instHappensBefore(jpF, jpS)) {
+                            lftasks->setJoinPoint(jpF);
+                        } else {
+                            lftasks->setJoinPoint(jpS);
+                        }
+
+                        std::set<Instruction*> relatedInstsFirst = safeCheckInstsInNonLoopBody.at(instFirst);
+                        std::set<Instruction*> relatedInstsSecond = safeCheckInstsInNonLoopBody.at(instSecond);
+                        relatedInstsFirst.insert(relatedInstsSecond.begin(), relatedInstsSecond.end());
+                        lftasks->setInfo(relatedInstsFirst);
+                        
+                        lftasks->setJoinFunc(joinFunc);
+                        
+                        if (instHappensBefore(instFirst, instSecond)) {
+                            lftasks->setMergeDirection(1);
+                        } else {
+                            lftasks->setMergeDirection(2);
+                        }
+                        
+
+                        
+                    } else {//instSecond is a nullptr, create as baseline task
+                        std::vector<Instruction*> instSet{instFirst};
+                    
+                        lftasks->setSafeCheckCodesForOneTask(instSet);
+                    
+                        Instruction * jpt = safeCheckCallInstJoinPoint.at(instFirst);
+                    
+                        lftasks->setJoinPoint(jpt);
+                    
+                        std::set<Instruction*> relatedInsts = safeCheckInstsInNonLoopBody.at(instFirst);
+                        lftasks->setInfo(relatedInsts);
+                        
+                        lftasks->setJoinFunc(joinFunc);
+
+                    }
+
+                    loopFreeTasks.push_back(lftasks);
+                }
+            }
+
+        }
+
+    }
+    #endif
 
 
     // transform those loopTasks
+    #if ENABLELOOP
     for (auto task : loopTasks) {
         errs() << "---naive task: " << "\n";
         // task->transform();
         task->splitLoop();
         errs() << "---final task: " << "\n";
     }
+    #endif
 
-    //transform those loopFree tasks
-    // for (auto t : loopFreeTasks) {
-    //     t->transform(); // enumerate all combinators and choose the max profit one
-    // }
+    #if ENABLELOOPFREE
+    for (auto t : loopFreeTasks) {
+        t->transform();
+    }
+    #endif
 
     //erase original safe check codes in original loop
+    #if ENABLELOOP
     for (auto task : loopTasks) {
         task->eraseSafeCheckCodes();
     }
+    #endif
 
-    // for (auto t : loopFreeTasks) {
-    //     t->eraseSafeCheckCodes();
-    // }
+    #if ENABLELOOPFREE
+    for (auto t : loopFreeTasks) {
+        t->eraseSafeCheckCodes();
+    }
+    #endif
 
     errs() << "Final module: \n";
     errs() << *this->program << "\n";
@@ -1361,4 +1519,31 @@ Constant * Loops::generateJoinFunc() {
     FunctionType * joinFuncType = FunctionType::get(Type::getVoidTy(ctx), ty, false);
     Constant * join = this->program->getOrInsertFunction("_Z4joinj", joinFuncType);
     return join;
+}
+
+uint32_t Loops::calBaselineCost(std::vector<Instruction*> safecheckInsts) {
+    uint32_t res = 0;
+    
+    for (int i = 0; i < safecheckInsts.size(); i++) {
+        Instruction * curInst = safecheckInsts[i];
+        BasicBlock * curBB = curInst->getParent();
+
+        uint32_t count = 0;
+        uint32_t ts1 = 0;
+        for (Instruction &inst : *curBB) {
+            if (curInst == &inst) {
+                ts1 = count;
+            }
+            if (CallInst * ci = dyn_cast<CallInst>(&inst)) {
+                if (!IsSafeCheckCallForLoopFree(ci)) count += 100; //average function cost
+            } else {
+                if (IsMemAccessInst(inst)) {
+                    count++;
+                }
+            }
+        }
+        res += std::max(count, ts1 + getSafeCheckCost(curInst) + getSpawnableCost());
+    }
+
+    return res;
 }

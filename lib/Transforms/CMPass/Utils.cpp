@@ -179,16 +179,20 @@ bool IsSafeCheckCallForLoopFree(CallInst *CI) {
     if (CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
         if (
-            callName.equals("__softboundcets_metadata_load") ||
+            // callName.equals("__softboundcets_metadata_load") ||
             callName.equals("__softboundcets_temporal_load_dereference_check") ||
             callName.equals("__softboundcets_spatial_load_dereference_check") ||
             callName.equals("__softboundcets_temporal_store_dereference_check") ||
             callName.equals("__softboundcets_spatial_store_dereference_check") ||
-            callName.equals("__softboundcets_metadata_store") ||
+            // callName.equals("__softboundcets_metadata_store") ||
             callName.equals("_RV_check_dpv") || 
             callName.equals("_RV_check_dpv_ss") || 
             callName.equals("_RV_check_dpc") || 
-            callName.equals("_RV_check_dpc_ss")) {
+            callName.equals("_RV_check_dpc_ss") ||
+            // callName.equals("_safeC_metadata_lookup_base_bound") ||
+            // callName.equals("_safeC_metadata_update") ||
+            callName.equals("_safeC_spatial_check") ||
+            callName.equals("_safeC_spatial_check_array2")) {
             return true;
         }
     }
@@ -424,6 +428,135 @@ Instruction * getNextInstruction(Instruction * I, BasicBlock *BB) {
     return Next;
 }
 
+uint32_t calCost(std::pair<Instruction*, Instruction*> pair, std::unordered_map<Instruction *, Instruction *> safeCheckCallInstJoinPoint) {
+    uint32_t res = 0;
+    Instruction * leftInst = pair.first;
+    Instruction * rightInst = pair.second; // may be rightInst is a nullptr
+    if (rightInst != nullptr) {
+        errs() << "--436\n";
+        Instruction * leftInstJP = safeCheckCallInstJoinPoint.at(leftInst);
+        if (leftInstJP == nullptr) errs() << "l is null...\n";
+        
+        
+        Instruction * rightInstJP = safeCheckCallInstJoinPoint.at(rightInst);
+        if (rightInstJP == nullptr) errs() << "r is null...\n";
+        errs() << "--438\n";
+        //judge which cost model to cal
+        Instruction * leftInstNext = getNextInstruction(leftInst, leftInst->getParent());
+        Instruction * rightInstNext = getNextInstruction(rightInst, rightInst->getParent());
+        errs() << "--439\n";
+        Instruction * leftInstJPNext = getNextInstruction(leftInstJP, leftInstJP->getParent());
+        Instruction * rightInstJPNext = getNextInstruction(rightInstJP, rightInstJP->getParent());
+        errs() << "--437\n";
+        if (leftInstNext != rightInst && rightInstNext != leftInst) { // a, d , e
+            if (leftInstJPNext != rightInstJP && rightInstJPNext != leftInstJP && leftInstJP != rightInstJP) {
+                if (instHappensBefore(leftInstJP, rightInstJP)) {
+                    //leftJP  rightJP
+                    //d
+                    if (instHappensBefore(leftInst, rightInst)) {
+                        errs() << "--451\n";
+                        //leftInst  rightInst
+                        uint32_t ts1 = getOriginalCost(leftInst, rightInst);
+                        uint32_t ts2 = getOriginalCost(rightInst, leftInstJP);
+                        uint32_t ts3 = getOriginalCost(leftInstJP, rightInstJP);
+                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                        res = std::max(tm1px + ts3, ts1 + std::max(ts2 + ts3, tm2px));
+                        
+                    } else {
+                        // rightInst leftInst , 
+                        //another e model, reverse m1 and m2
+                        errs() << "--452\n";
+                        uint32_t ts1 = getOriginalCost(rightInst, leftInst);
+                        uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
+                        uint32_t ts3 = getOriginalCost(leftInstJP, rightInstJP);
+                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                        res = std::max(tm2px, ts1 + ts3 + std::max(ts2, tm1px));
+                    }
+                    
+                } else {//rightJP leftJP 
+                    //e
+                    if (instHappensBefore(leftInst, rightInst)) {
+                        //left  right
+                        errs() << "--453\n";
+                        uint32_t ts1 = getOriginalCost(leftInst, rightInst);
+                        uint32_t ts2 = getOriginalCost(rightInst, rightInstJP);
+                        uint32_t ts3 = getOriginalCost(rightInstJP, leftInstJP);
+                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                        res = std::max(tm1px, ts1 + ts3 + std::max(ts2, tm2px));
+
+                    } else {
+                        //right left 
+                        //another d model, reverse m1 and m2
+                        errs() << "--454\n";
+                        uint32_t ts1 = getOriginalCost(rightInst, leftInst);
+                        uint32_t ts2 = getOriginalCost(leftInst, rightInstJP);
+                        uint32_t ts3 = getOriginalCost(rightInstJP, leftInstJP);
+                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                        res = std::max(ts3 + tm2px, ts1 + std::max(ts2 + ts3, tm1px));
+                    }
+                }
+            } else {
+                //a
+                if (instHappensBefore(leftInst, rightInst)) {
+                    errs() << "--456\n";
+                    uint32_t ts1 = getOriginalCost(leftInst, rightInst);
+                    uint32_t ts2 = getOriginalCost(rightInst, rightInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(tm1px, ts1 + std::max(ts2, tm2px));
+
+                } else {
+                    errs() << "--457\n";
+                    uint32_t ts1 = getOriginalCost(rightInst, leftInst);
+                    uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(tm2px, ts1 + std::max(ts1, tm1px));
+                }
+            }
+        } else { // b, c
+            if (leftInstJPNext != rightInstJP && rightInstJPNext != leftInstJP && leftInstJP != rightInstJP) {
+                //b
+                
+                if (instHappensBefore(leftInstJP, rightInstJP)) {
+                    errs() << "--458\n";
+                    uint32_t ts2 = getOriginalCost(leftInstJP, rightInstJP);
+                    uint32_t ts1 = getOriginalCost(leftInst, leftInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(ts2 + std::max(ts1, tm1px), tm2px);
+                } else {
+                    errs() << "--459\n";
+                    uint32_t ts2 = getOriginalCost(rightInstJP, leftInstJP);
+                    uint32_t ts1 = getOriginalCost(rightInst, rightInstJP);
+                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                    res = std::max(ts2 + std::max(ts1, tm2px), tm1px);
+                }
+            } else {
+                //c
+                errs() << "--460\n";
+                uint32_t ts1 = getOriginalCost(leftInst, leftInstJP);
+                uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+                uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
+                res = tm1px >= ts1 ? std::max(tm1px, ts1) : std::max(ts1, tm2px);
+            }
+        }
+    } else {//rightInst is a nullptr
+        errs() << "--461\n";
+        Instruction * leftInstJP = safeCheckCallInstJoinPoint.at(leftInst);
+        uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
+        uint32_t ts1 = getOriginalCost(&*(leftInst->getParent()->begin()),leftInst);
+        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
+        res = std::max(ts1 + ts2, ts1 + tm1px);
+    }
+
+    return res;
+}
 
 
 // static std::set<std::string> SoftBoundCETSLibCalls {

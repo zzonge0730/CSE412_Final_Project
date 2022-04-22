@@ -12,6 +12,7 @@
 #include <string>
 #include <set>
 #include <unordered_set>
+#include <unordered_map>
 
 using namespace llvm;
 
@@ -45,6 +46,9 @@ uint32_t getOriginalCost(Instruction *start, Instruction *end);
 bool IsSafeCheckCallForLoopFree(CallInst *CI);
 bool instHappensBefore(Instruction *inst, Instruction *final);
 Instruction * getNextInstruction(Instruction *I, BasicBlock *BB);
+
+uint32_t calCost(std::pair<Instruction*, Instruction*> pair, std::unordered_map<Instruction *, Instruction *>safeCheckInstJoinPoint);
+
 
 // template<typename T, typename... Args>
 // std::unique_ptr<T> make_unique(Args&&... args) {

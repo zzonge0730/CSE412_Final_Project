@@ -23,6 +23,10 @@ void LoopFreeTask::setJoinFunc(Constant * joinF) {
     this->joinFunc = joinF;
 }
 
+void LoopFreeTask::setCreatePt(Instruction * startPt) {
+    this->multiCheckStartPt = startPt;
+}
+
 void LoopFreeTask::transform() {
 
     SafeCheckTobeMerged();
@@ -146,11 +150,16 @@ void LoopFreeTask::SafeCheckTobeMerged() {
     LLVMContext& ctx = this->M->getContext();
     std::vector<Instruction *> checksGroup = this->safeCheckCodeForOneTask;
     Instruction * locToInsertBefore = nullptr;
-    if (this->mergedirection == 0 || this->mergedirection == 2) {
-        locToInsertBefore = checksGroup[0];
+    if (checksGroup.size() <= 2) {
+        if (this->mergedirection == 0 || this->mergedirection == 2) {
+            locToInsertBefore = checksGroup[0];
+        } else {
+            locToInsertBefore = checksGroup[1];
+        }
     } else {
-        locToInsertBefore = checksGroup[1];
+        locToInsertBefore = this->multiCheckStartPt;
     }
+
     
 
     std::vector<Type *> wrapperFuncArgs;
@@ -194,8 +203,18 @@ void LoopFreeTask::SafeCheckTobeMerged() {
                 groupedCastArgs.push_back(bitcast);     
             } else {
                 BitCastInst * bitcast = new BitCastInst(&*wrapperFuncArgListIt, PointerType::getUnqual(tmpType), "", entryBB);
-                LoadInst * load = new LoadInst(bitcast, "", entryBB);
-                groupedCastArgs.push_back(load);     
+                // LoadInst * load = new LoadInst(bitcast, "", entryBB);
+                Type * destTy = Type::getInt64Ty(ctx);
+                if (tmpType->isIntegerTy(8)) {
+                    destTy = Type::getInt8Ty(ctx);
+                } else if (tmpType->isIntegerTy(16)) {
+                    destTy = Type::getInt16Ty(ctx);
+                } else if (tmpType->isIntegerTy(32)) {
+                    destTy = Type::getInt32Ty(ctx);
+                }
+                
+                Value * tmpCast = CastInst::Create(Instruction::PtrToInt, bitcast, destTy, "zt_", entryBB);
+                groupedCastArgs.push_back(tmpCast);     
             }
         }
 
@@ -292,8 +311,11 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
             if (argTy->isPointerTy()) {
                 castArg = arg;
             } else {
-                castArg = new AllocaInst(argTy, "zyarg_", curCI);
-                new StoreInst(arg, castArg, curCI);
+                // castArg = new AllocaInst(argTy, "zyarg_", curCI);
+                // new StoreInst(arg, castArg, curCI);
+                // std::string varName = "zyarg_";
+                castArg = CastInst::Create(Instruction::IntToPtr, arg, voidStarTy, "zyarg_", curCI);
+
             }
             BitCastInst * bcInst = new BitCastInst(castArg, voidStarTy, "zybc_", curCI);
             // errs() << "-215-bcInst:" << *bcInst << "\n";

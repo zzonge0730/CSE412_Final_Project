@@ -66,8 +66,7 @@ private:
     static bool isTheMovecLibraryFunction(Function * libF);
     // static const std::unordered_set<std::string> movecLibFunction;
 
-    uint32_t calBaselineCost(std::vector<Instruction*> checkInsts);
-    uint32_t calCost(std::pair<Instruction*, Instruction*> pair, std::unordered_map<Instruction *, Instruction *>safeCheckInstJoinPoint);
+    uint32_t calBaselineCostForMC(std::vector<Instruction*> safecheckInsts);
 
 
 

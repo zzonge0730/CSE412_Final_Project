@@ -952,7 +952,7 @@ bool LoopsMovec::runOnModule(Module &M) {
                 vecvecPair.push_back(vp);
             } while (next_permutation(vec.begin(), vec.end()));
             
-            uint32_t minCost = calBaselineCost(vec); // baseline no merge
+            uint32_t minCost = calBaselineCostForMC(vec); // baseline no merge
             std::vector<std::pair<Instruction*, Instruction*>> minCostPairVec = {};
             //cal cost and choose the minimal cost pair vec
             for (auto item : vecvecPair) {
@@ -1478,7 +1478,7 @@ bool LoopsMovec::isTheMovecLibraryFunction(Function * libF) {
     return false;
 }
 
-uint32_t LoopsMovec::calBaselineCost(std::vector<Instruction*> safecheckInsts) {
+uint32_t LoopsMovec::calBaselineCostForMC(std::vector<Instruction*> safecheckInsts) {
     uint32_t res = 0;
     
     for (int i = 0; i < safecheckInsts.size(); i++) {
@@ -1506,118 +1506,4 @@ uint32_t LoopsMovec::calBaselineCost(std::vector<Instruction*> safecheckInsts) {
 }
 
 
-uint32_t LoopsMovec::calCost(std::pair<Instruction*, Instruction*> pair, std::unordered_map<Instruction *, Instruction *> safeCheckCallInstJoinPoint) {
-    uint32_t res = 0;
-    Instruction * leftInst = pair.first;
-    Instruction * rightInst = pair.second; // may be rightInst is a nullptr
-    if (rightInst != nullptr) {
-
-        Instruction * leftInstJP = safeCheckCallInstJoinPoint.at(leftInst);
-        
-        Instruction * rightInstJP = safeCheckCallInstJoinPoint.at(rightInst);
-
-        //judge which cost model to cal
-        Instruction * leftInstNext = getNextInstruction(leftInst, leftInst->getParent());
-        Instruction * rightInstNext = getNextInstruction(rightInst, rightInst->getParent());
-        Instruction * leftInstJPNext = getNextInstruction(leftInstJP, leftInstJP->getParent());
-        Instruction * rightInstJPNext = getNextInstruction(rightInstJP, rightInstJP->getParent());
-        if (leftInstNext != rightInst && rightInstNext != leftInst) { // a, d , e
-            if (leftInstJPNext != rightInstJP && rightInstJPNext != leftInstJP && leftInstJP != rightInstJP) {
-                if (instHappensBefore(leftInstJP, rightInstJP)) {
-                    //leftJP  rightJP
-                    //d
-                    if (instHappensBefore(leftInst, rightInst)) {
-                        //leftInst  rightInst
-                        uint32_t ts1 = getOriginalCost(leftInst, rightInst);
-                        uint32_t ts2 = getOriginalCost(rightInst, leftInstJP);
-                        uint32_t ts3 = getOriginalCost(leftInstJP, rightInstJP);
-                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                        res = std::max(tm1px + ts3, ts1 + std::max(ts2 + ts3, tm2px));
-                        
-                    } else {
-                        // rightInst leftInst , 
-                        //another e model, reverse m1 and m2
-                        uint32_t ts1 = getOriginalCost(rightInst, leftInst);
-                        uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
-                        uint32_t ts3 = getOriginalCost(leftInstJP, rightInstJP);
-                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                        res = std::max(tm2px, ts1 + ts3 + std::max(ts2, tm1px));
-                    }
-                    
-                } else {//rightJP leftJP 
-                    //e
-                    if (instHappensBefore(leftInst, rightInst)) {
-                        //left  right
-                        uint32_t ts1 = getOriginalCost(leftInst, rightInst);
-                        uint32_t ts2 = getOriginalCost(rightInst, rightInstJP);
-                        uint32_t ts3 = getOriginalCost(rightInstJP, leftInstJP);
-                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                        res = std::max(tm1px, ts1 + ts3 + std::max(ts2, tm2px));
-
-                    } else {
-                        //right left 
-                        //another d model, reverse m1 and m2
-                        uint32_t ts1 = getOriginalCost(rightInst, leftInst);
-                        uint32_t ts2 = getOriginalCost(leftInst, rightInstJP);
-                        uint32_t ts3 = getOriginalCost(rightInstJP, leftInstJP);
-                        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                        uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                        res = std::max(ts3 + tm2px, ts1 + std::max(ts2 + ts3, tm1px));
-                    }
-                }
-            } else {
-                //a
-                if (instHappensBefore(leftInst, rightInst)) {
-                    uint32_t ts1 = getOriginalCost(leftInst, rightInst);
-                    uint32_t ts2 = getOriginalCost(rightInst, rightInstJP);
-                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                    res = std::max(tm1px, ts1 + std::max(ts2, tm2px));
-
-                } else {
-                    uint32_t ts1 = getOriginalCost(rightInst, leftInst);
-                    uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
-                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                    res = std::max(tm2px, ts1 + std::max(ts1, tm1px));
-                }
-            }
-        } else { // b, c
-            if (leftInstJPNext != rightInstJP && rightInstJPNext != leftInstJP && leftInstJP != rightInstJP) {
-                //b
-                
-                if (instHappensBefore(leftInstJP, rightInstJP)) {
-                    uint32_t ts2 = getOriginalCost(leftInstJP, rightInstJP);
-                    uint32_t ts1 = getOriginalCost(leftInst, leftInstJP);
-                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                    res = std::max(ts2 + std::max(ts1, tm1px), tm2px);
-                } else {
-                    uint32_t ts2 = getOriginalCost(rightInstJP, leftInstJP);
-                    uint32_t ts1 = getOriginalCost(rightInst, rightInstJP);
-                    uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                    uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                    res = std::max(ts2 + std::max(ts1, tm2px), tm1px);
-                }
-            } else {
-                //c
-                uint32_t ts1 = getOriginalCost(leftInst, leftInstJP);
-                uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-                uint32_t tm2px = getSafeCheckCost(rightInst) + getSpawnableCost();
-                res = tm1px >= ts1 ? std::max(tm1px, ts1) : std::max(ts1, tm2px);
-            }
-        }
-    } else {//rightInst is a nullptr
-        Instruction * leftInstJP = safeCheckCallInstJoinPoint.at(leftInst);
-        uint32_t ts2 = getOriginalCost(leftInst, leftInstJP);
-        uint32_t ts1 = getOriginalCost(&*(leftInst->getParent()->begin()),leftInst);
-        uint32_t tm1px = getSafeCheckCost(leftInst) + getSpawnableCost();
-        res = std::max(ts1 + ts2, ts1 + tm1px);
-    }
-
-    return res;
-}
 

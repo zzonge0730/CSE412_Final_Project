@@ -17,6 +17,7 @@ public:
     void eraseSafeCheckCodes();
     void setJoinFunc(Constant * joinF);
     void setMergeDirection(int direction);
+    void setCreatePt(Instruction * startPt);
 
 private:
     uint32_t ID;
@@ -34,6 +35,7 @@ private:
     std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckCallInstJoinPoints;
 
     std::vector<Instruction *> safeCheckVector;
+    Instruction * multiCheckStartPt;
 
     void SafeCheckTobeMerged();
 

@@ -64,6 +64,7 @@ private:
 
     bool instHappensBefore(Instruction * inst, Instruction * final);
     Constant * generateJoinFunc();
+    uint32_t calBaselineCost(std::vector<Instruction*> safecheckInsts);
 
 };
 
