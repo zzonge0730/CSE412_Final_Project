@@ -1,8 +1,8 @@
 #include "LoopsMovec.h"
 
-#define ENABLELOOP 0
+#define ENABLELOOP 1
 
-#define ENABLELOOPFREE 1
+#define ENABLELOOPFREE 0
 
 #define ZYYDEBUG 1
 
@@ -796,7 +796,7 @@ bool LoopsMovec::runOnModule(Module &M) {
     }
     #endif
 
-        #if ENABLELOOPFREE
+    #if ENABLELOOPFREE
     //determine basicblocks in loop code
     std::vector<LoopStructure *> * loopStructures = this->getLoopStructures();
     std::unordered_set<BasicBlock *> allLoopBasicBlocks;
