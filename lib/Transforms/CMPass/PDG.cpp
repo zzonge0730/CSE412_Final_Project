@@ -2,8 +2,11 @@
 #include "Utils.h"
 #include <algorithm>
 #include <assert.h>
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
+
+static cl::opt<bool> MCSelected("movec", cl::ZeroOrMore, cl::Hidden, cl::desc("Specify the PDG for MoveC"));
 
 PDG::PDG(Module &M) {
     // int count = 0;
@@ -25,7 +28,8 @@ PDG::PDG(Module &M) {
     //"main" for asan and ubsan
     //"softboundcets_pseudo_main" for softboundcets
     //"main" for movec
-    auto mainF = M.getFunction("softboundcets_pseudo_main");
+    
+    auto mainF = (MCSelected.getNumOccurrences() > 0) ? M.getFunction("main") : M.getFunction("softboundcets_pseudo_main");
     // auto mainF = M.getFunction("main");
 
 
