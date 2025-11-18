@@ -1,0 +1,119 @@
+# Multi-stage Dockerfile for Catamaran with LLVM 14
+# Stage 1: Builder stage - Build LLVM 14 and other dependencies
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    CC=gcc-12 \
+    CXX=g++-12
+
+# System dependencies for building LLVM 14
+# LLVM 14 requires: C++17, GCC 10+, CMake 3.13+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    build-essential \
+    wget \
+    cmake \
+    ninja-build \
+    python3 \
+    gcc-12 \
+    g++-12 \
+    zlib1g-dev \
+    libxml2-dev \
+    libedit-dev \
+    libffi-dev \
+    libssl-dev \
+    libncurses5-dev \
+    libtinfo5 \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+# Download and extract LLVM 14 source (using official release archive)
+# LLVM 14.0.6 release archive is more stable than git clone
+RUN wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/llvm-14.0.6.src.tar.xz \
+    && wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/clang-14.0.6.src.tar.xz \
+    && wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/lld-14.0.6.src.tar.xz \
+    && tar -xf llvm-14.0.6.src.tar.xz \
+    && tar -xf clang-14.0.6.src.tar.xz -C llvm-14.0.6.src/tools \
+    && mv llvm-14.0.6.src/tools/clang-14.0.6.src llvm-14.0.6.src/tools/clang \
+    && tar -xf lld-14.0.6.src.tar.xz -C llvm-14.0.6.src/tools \
+    && mv llvm-14.0.6.src/tools/lld-14.0.6.src llvm-14.0.6.src/tools/lld \
+    && rm -f *.tar.xz \
+    && mv llvm-14.0.6.src llvm-14
+
+# Build LLVM 14
+RUN mkdir -p /opt/llvm-14/build \
+    && cd /opt/llvm-14/build \
+    && cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=gcc-12 \
+        -DCMAKE_CXX_COMPILER=g++-12 \
+        -DLLVM_ENABLE_PROJECTS="clang;lld" \
+        -DLLVM_TARGETS_TO_BUILD="X86" \
+        -DLLVM_ENABLE_ASSERTIONS=ON \
+        -DLLVM_ENABLE_RTTI=ON \
+        -DCMAKE_CXX_STANDARD=17 \
+        -DCMAKE_INSTALL_PREFIX=/opt/llvm-14/install \
+        ../llvm \
+    && ninja -j "$(nproc)" \
+    && ninja install
+
+# Install MoveC in builder stage
+RUN git clone --depth=1 https://github.com/drzchen/movec.git /opt/movec
+
+# Stage 2: Runtime stage - Minimal final image
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Runtime dependencies only (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libstdc++6 \
+    libgcc-s1 \
+    zlib1g \
+    libxml2 \
+    libedit2 \
+    libffi8 \
+    libssl3 \
+    libncurses6 \
+    libtinfo6 \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy LLVM 14 installation from builder stage
+COPY --from=builder /opt/llvm-14/install /opt/llvm-14
+
+# Copy MoveC from builder stage
+COPY --from=builder /opt/movec /opt/movec
+
+# Create build directory structure for Catamaran
+RUN mkdir -p /opt/catamaran/build-catamaran-14 \
+    && printf "# Catamaran LLVM 14 build directory\n# Port CMPass to LLVM 14 first, then run:\n# cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=\$LLVM14/lib/cmake/llvm ../Catamaran-llvm-14/llvm\n# ninja\n" > /opt/catamaran/build-catamaran-14/README.txt
+
+# Environment variables (unified PATH setting)
+ENV PATH=/opt/llvm-14/bin:/opt/movec/bin:$PATH \
+    LLVM14=/opt/llvm-14 \
+    CATAMARAN14=/opt/catamaran/build-catamaran-14 \
+    MOVEC_BIN=/opt/movec/bin
+
+# Quick smoke test script
+RUN printf '#!/bin/bash\nset -e\n\ncd /opt/catamaran\necho "Testing LLVM 14 installation..."\n${LLVM14}/bin/clang --version\necho ""\nif [ -d "examples" ] && [ -f "examples/2mm.c" ]; then\n  echo "Testing basic compilation..."\n  ${LLVM14}/bin/clang examples/2mm.c -o /tmp/2mm_base -lm\n  if [ -f /tmp/2mm_base ]; then\n    echo "✓ Baseline build successful: /tmp/2mm_base"\n  else\n    echo "✗ Baseline build failed"\n  fi\nfi\nif [ -f "${CATAMARAN14}/bin/clang" ]; then\n  echo "✓ Catamaran is built"\nelse\n  echo "⚠ Catamaran not built yet. Port CMPass to LLVM 14 first!"\n  echo "  See: /opt/catamaran/build-catamaran-14/README.txt"\nfi\n' > /usr/local/bin/smoke_test.sh \
+    && chmod +x /usr/local/bin/smoke_test.sh
+
+WORKDIR /opt/catamaran
+
+# Copy Catamaran project source (LAST to maximize cache efficiency)
+# This should be the last step so that source code changes don't invalidate
+# the expensive LLVM build cache
+COPY . /opt/catamaran
+
+# Default command shows quick help
+CMD ["/bin/bash", "-lc", "echo 'Catamaran LLVM 14 container ready.' && echo 'LLVM 14: '$LLVM14 && echo 'Catamaran-14: '$CATAMARAN14 && echo 'Note: CMPass needs to be ported to LLVM 14 APIs!' && echo 'Run: smoke_test.sh'"]
