@@ -1,0 +1,91 @@
+# Build artifacts
+build-*/
+**/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+**/*.o
+**/*.so
+**/*.a
+**/*.bc
+*.bc
+
+# Generated IR files (except examples)
+*.ll
+!examples/**/*.ll
+!examples/**/*.ll.original
+# Exclude large IR files (debug/optimized versions)
+examples/**/*_opt.ll
+examples/**/*_debug.ll
+
+# Binaries and executables
+**/*.exe
+**/*.out
+CM-MoveC-2mm
+MoveC-2mm-seq
+MoveC-2mm-par
+MoveC-2mm
+SBCETS-2mm
+2mm
+3mm
+gemm
+# Large binaries (50MB+)
+movec/bin/movec
+softboundcets-34/**/bin/clang
+softboundcets-34/**/bin/*
+**/Release+Asserts/bin/*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+err.log
+opt_debug*.log
+*.tmp
+*.bak
+*.txt
+!docs/**/*.txt
+!README.md
+!LICENSE
+
+# Docker
+.dockerignore
+
+# Backup and patch files
+backup_patches/
+*.patch.bak
+*.original
+*.patched
+
+# Archive files (except source archives if needed)
+*.tar.gz
+*.zip
+!polybench.tar.gz  # Keep if it's a source archive
+
+# SPEC benchmarks (if proprietary)
+SPEC/
+
+# Host build directories
+*-host-build/
+
+# Test output
+test-output/
+*.test
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Agent tools and cursor files
+.cursor/
+agent-tools/
+

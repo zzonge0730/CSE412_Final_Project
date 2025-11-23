@@ -1,0 +1,143 @@
+# Multi-stage Dockerfile for Catamaran with LLVM 14
+# Stage 1: Builder stage - Build LLVM 14 and other dependencies
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    CC=gcc-12 \
+    CXX=g++-12
+
+# System dependencies for building LLVM 14
+# LLVM 14 requires: C++17, GCC 10+, CMake 3.13+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    build-essential \
+    wget \
+    git \
+    cmake \
+    ninja-build \
+    python3 \
+    python3-pip \
+    python-is-python3 \
+    gcc-12 \
+    g++-12 \
+    zlib1g-dev \
+    libxml2-dev \
+    libedit-dev \
+    libffi-dev \
+    libssl-dev \
+    libncurses5-dev \
+    libncurses-dev \
+    libtinfo5 \
+    libtinfo-dev \
+    pkg-config \
+    time \
+    bash \
+    xz-utils \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+# Download and extract LLVM 14 source (using official release archive)
+# LLVM 14 uses monorepo structure, so we download the full llvm-project
+RUN wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/llvm-project-14.0.6.src.tar.xz \
+    && tar -xf llvm-project-14.0.6.src.tar.xz \
+    && mv llvm-project-14.0.6.src llvm-14 \
+    && rm -f llvm-project-14.0.6.src.tar.xz
+
+# Build LLVM 14
+# In monorepo: llvm-14/llvm/ is the main LLVM source directory
+RUN mkdir -p /opt/llvm-14/build \
+    && cd /opt/llvm-14/build \
+    && cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=gcc-12 \
+        -DCMAKE_CXX_COMPILER=g++-12 \
+        -DLLVM_ENABLE_PROJECTS="clang;lld" \
+        -DLLVM_TARGETS_TO_BUILD="X86" \
+        -DLLVM_ENABLE_ASSERTIONS=ON \
+        -DLLVM_ENABLE_RTTI=ON \
+        -DCMAKE_CXX_STANDARD=17 \
+        -DCMAKE_INSTALL_PREFIX=/opt/llvm-14/install \
+        /opt/llvm-14/llvm \
+    && ninja -j "$(nproc)" \
+    && ninja install
+
+# Install MoveC in builder stage
+RUN git clone --depth=1 https://github.com/drzchen/movec.git /opt/movec
+
+# Stage 2: Runtime stage - Minimal final image
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Runtime dependencies + build tools (for building Catamaran)
+# Note: pthread is included in libc6, but we need build-essential for compiling runtime/ThreadPool.cpp
+# Also need cmake and ninja-build for building Catamaran CMPass
+# Need dev packages (with headers) for compiling CMPass
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    build-essential \
+    cmake \
+    ninja-build \
+    git \
+    wget \
+    libstdc++6 \
+    libgcc-s1 \
+    zlib1g \
+    zlib1g-dev \
+    libxml2 \
+    libxml2-dev \
+    libedit2 \
+    libedit-dev \
+    libffi8 \
+    libffi-dev \
+    libssl3 \
+    libssl-dev \
+    libncurses6 \
+    libncurses-dev \
+    libtinfo6 \
+    libtinfo-dev \
+    pkg-config \
+    python3 \
+    time \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy LLVM 14 installation from builder stage
+COPY --from=builder /opt/llvm-14/install /opt/llvm-14
+
+# Copy MoveC from builder stage
+COPY --from=builder /opt/movec /opt/movec
+
+# Set working directory first
+WORKDIR /workspace
+
+# Copy Catamaran project source (before creating build dir)
+COPY . /workspace
+
+# Create symlink for consistency with /opt/catamaran paths
+RUN ln -sf /workspace /opt/catamaran
+
+# Create build directory structure for Catamaran (after symlink)
+RUN mkdir -p /workspace/build-catamaran-14 \
+    && printf "# Catamaran LLVM 14 build directory\n#\n# Port CMPass to LLVM 14 APIs first, then build:\n#\n# cd /workspace/build-catamaran-14\n# cmake -G Ninja \\\n#   -DCMAKE_BUILD_TYPE=Release \\\n#   -DLLVM_DIR=\$LLVM14/lib/cmake/llvm \\\n#   -DCMAKE_CXX_STANDARD=17 \\\n#   ../Catamaran-llvm-14/llvm\n# ninja\n#\n# Note: Catamaran-llvm-14 directory should contain the ported CMPass code.\n" > /workspace/build-catamaran-14/README.txt
+
+# Environment variables (unified PATH setting)
+ENV PATH=/opt/llvm-14/bin:/opt/movec/bin:$PATH \
+    LLVM14=/opt/llvm-14 \
+    CATAMARAN14=/workspace/build-catamaran-14 \
+    MOVEC_BIN=/opt/movec/bin
+
+# Quick smoke test script
+RUN printf '#!/bin/bash\nset -e\n\ncd /workspace\necho "=========================================="\necho "Catamaran LLVM 14 Smoke Test"\necho "=========================================="\necho ""\necho "Testing LLVM 14 installation..."\n${LLVM14}/bin/clang --version\necho ""\necho "Testing MoveC..."\nif [ -f "${MOVEC_BIN}/movec" ]; then\n  ${MOVEC_BIN}/movec -h > /dev/null 2>&1 && echo "✓ MoveC is available" || echo "⚠ MoveC binary found but may not be executable"\nelse\n  echo "⚠ MoveC not found at ${MOVEC_BIN}/movec"\nfi\necho ""\nif [ -d "examples" ] && [ -f "examples/2mm.c" ]; then\n  echo "Testing basic compilation with LLVM 14..."\n  ${LLVM14}/bin/clang examples/2mm.c -o /tmp/2mm_base -lm\n  if [ -f /tmp/2mm_base ]; then\n    echo "✓ Baseline build successful: /tmp/2mm_base"\n  else\n    echo "✗ Baseline build failed"\n  fi\nelse\n  echo "⚠ Examples directory not found"\nfi\necho ""\nif [ -f "${CATAMARAN14}/bin/clang" ]; then\n  echo "✓ Catamaran is built"\n  ${CATAMARAN14}/bin/clang --version\nelse\n  echo "⚠ Catamaran not built yet. Port CMPass to LLVM 14 first!"\n  echo "  See: ${CATAMARAN14}/README.txt"\nfi\necho ""\necho "=========================================="\n' > /usr/local/bin/smoke_test.sh \
+    && chmod +x /usr/local/bin/smoke_test.sh
+
+# Default command shows quick help
+CMD ["/bin/bash", "-lc", "echo '==========================================' && echo 'Catamaran LLVM 14 Container' && echo '==========================================' && echo '' && echo 'Environment:' && echo '  LLVM14: '$LLVM14 && echo '  CATAMARAN14: '$CATAMARAN14 && echo '  MOVEC_BIN: '$MOVEC_BIN && echo '' && echo 'Working directory: /workspace' && echo '' && echo 'Next steps:' && echo '  1. Port CMPass to LLVM 14 APIs' && echo '  2. Build Catamaran (see README in build-catamaran-14/)' && echo '  3. Run: smoke_test.sh' && echo '' && echo '=========================================='"]
