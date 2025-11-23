@@ -17,6 +17,7 @@
 - [LLVM 17 포팅 상세 로그](llvm17-port/LLVM17_PORTING_DETAILED_LOG.md) - 포팅 과정 상세 기록
 - [Safe Check 감지 분석](llvm17-port/SAFE_CHECK_DETECTION_ANALYSIS.md) - Safe Check 감지 문제 분석
 - [테스트 상태](llvm17-port/TEST_STATUS.md) - 테스트 결과 및 상태
+- [LLVM 3.5.2 검증 보고서](llvm17-port/LLVM35_VERIFICATION.md) - LLVM 3.5.2 ASAN 지원 검증
 
 ## 문서 구조
 
@@ -58,6 +59,7 @@ docs/
 - [LLVM 17 Porting Detailed Log](llvm17-port/LLVM17_PORTING_DETAILED_LOG.md) - Detailed porting process
 - [Safe Check Detection Analysis](llvm17-port/SAFE_CHECK_DETECTION_ANALYSIS.md) - Safe Check detection issue analysis
 - [Test Status](llvm17-port/TEST_STATUS.md) - Test results and status
+- [LLVM 3.5.2 Verification Report](llvm17-port/LLVM35_VERIFICATION.md) - LLVM 3.5.2 ASAN support verification
 
 ## Documentation Structure
 

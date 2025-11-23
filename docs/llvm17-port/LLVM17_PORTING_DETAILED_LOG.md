@@ -1,4 +1,4 @@
-# LLVM 17 Porting and Reproduction Log (2024-11-23 Update)
+# LLVM 17 Porting and Reproduction Log
 
 ## 1. Goal
 The primary objective was to port the "Catamaran" memory safety acceleration system from LLVM 3.4 to LLVM 17 and reproduce its core "Loop-Free Metadata Parallelization" functionality. Specifically, we aimed to support **MoveC** and **AddressSanitizer (ASAN)** metadata checks.

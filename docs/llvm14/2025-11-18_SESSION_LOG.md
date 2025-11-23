@@ -519,7 +519,7 @@ class PDGAnalysis; // Forward declaration
 - `InterTask.cpp`, `LoopFreeTask.cpp`, `DOALLTask.cpp`, `EnvBuilder.cpp` 등에서 타입 캐스팅 코드가 많음
 - LLVM 17의 Opaque Pointers로 이러한 코드들이 단순해질 수 있음
 
-**2024-11-18 진행 상황:**
+**진행 상황 요약:**
 
 ### 오늘 완료한 작업
 

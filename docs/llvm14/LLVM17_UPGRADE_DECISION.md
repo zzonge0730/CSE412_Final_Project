@@ -4,7 +4,7 @@
 
 **LLVM 17 (또는 16)로 업그레이드 진행**
 
-- **결정 일자**: 2024-11-18
+- **결정 일자**: 세션 로그 참고
 - **이전 추천**: LLVM 15 (반박 후 수정)
 - **최종 결정**: LLVM 17
 
@@ -148,7 +148,7 @@ opt -load-pass-plugin=libCatamaranPass.so -passes="catamaran" input.ll -o output
 ## 참고 자료
 
 - `LLVM_VERSION_UPGRADE_ANALYSIS.md` - 상세 분석 문서
-- `2024-11-18_SESSION_LOG.md` - 작업 일지
+- `docs/llvm14/*SESSION_LOG*.md` - 작업 일지
 - LLVM 17 공식 문서: https://llvm.org/docs/
 - Opaque Pointers 문서: https://llvm.org/docs/OpaquePointers.html
 

@@ -3,7 +3,7 @@
 더 오래된 OS 필요 여부: 16.04는 패키지 노후/EOL이라 오히려 부담. 20.04에서도 필요한 의존성을 맞춰 이미 빌드 재현했으므로 그대로 간다.
 최신 실험: LLVM 18 등은 Ubuntu 22.04 별도 컨테이너/인스턴스에서 진행해 완전히 분리.
 
-## Objective 1 재현 진행 로그 (2025-11-09 ~ 2025-11-10)
+## Objective 1 재현 진행 로그
 
 ### 환경
 - **모든 작업은 Docker 컨테이너 안에서 진행**
@@ -47,11 +47,11 @@
 - Baseline (`2mm`): `0:02.86 16640KB`
 - SoftBoundCETS (`SBCETS-2mm`): `0:16.92 17408KB`
 - MoveC β (`MoveC-2mm`): `1:34.68 16768KB`
-- SoftBoundCETS / Catamaran γ: **성공** (2025-01-XX)
+- SoftBoundCETS / Catamaran γ: **성공** (기록 참고)
   - `opt -PDGAnalysis -catamaran-pdg-reaching-analysis -Loops` → 정상 실행 완료
   - 출력 파일 `CM-SBCETS-2mm-new.bc` 정상 생성 (28KB)
   - 바이너리 빌드 및 성능 측정 완료: `real 0m18.237s` (또는 `0m15.148s`)
-- MoveC / Catamaran γ: **성공** (2025-01-XX 해결)
+- MoveC / Catamaran γ: **성공** (기록 참고)
   - `opt -movec -PDGAnalysis -catamaran-pdg-reaching-analysis -LoopsMovec` → 정상 실행 완료
   - 출력 파일 `CM-MoveC-2mm.bc` 정상 생성 (97KB)
   - 바이너리 빌드 및 성능 측정 완료: `real 1m43.615s`
@@ -66,7 +66,7 @@
 - 위 변경은 재현 과정에서 필요한 빌드 호환성 조치이며, 원본 소스(`examples/2mm.c`, LLVM 패스 등)는 수정하지 않음.
 - 패치 적용 시점과 이유를 재현 보고서에 명시할 것.
 
-### MoveC γ 문제 해결 (2025-01-XX)
+### MoveC γ 문제 해결
 
 **문제**: `PDG::setEntryPointAt`에서 segfault 발생
 - 원인: `PDG::PDG(Module &M)` 생성자에서 `main` 함수를 찾지 못했을 때 `mainF`가 `nullptr`인 상태에서 `setEntryPointAt(*mainF)` 호출
@@ -97,7 +97,7 @@
 **발견된 문제:**
 - 호스트에서 빌드한 바이너리 (Catamaran, MoveC)는 Docker 컨테이너(Ubuntu 20.04, GLIBC 2.31)에서 실행 불가
 - 호스트 GLIBC 버전: 2.35, Docker 컨테이너 GLIBC 버전: 2.31
-- Catamaran은 Docker 컨테이너 안에서 재빌드 완료 (2025-11-10)
+- Catamaran은 Docker 컨테이너 안에서 재빌드 완료 (기록 참고)
 - MoveC는 아직 해결 필요: 바이너리가 호스트에서 빌드되어 컨테이너에서 실행 불가
 
 **해결 방법 (권장: 옵션 3 - 기존 IR 파일 사용):**

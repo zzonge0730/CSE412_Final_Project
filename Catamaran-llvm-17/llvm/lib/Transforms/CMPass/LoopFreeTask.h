@@ -29,7 +29,7 @@ private:
     std::map<uint32_t, Constant *> ctors;
     Constant * joinFunc;
     std::mt19937 loopFreeSeed;
-    void genCtorForSpawn(Function * wrapperFunc);
+    void genCtorForSpawn(Function * wrapperFunc, unsigned ctorKey);
     std::vector<Value *> genSpawnArgs( std::vector<Instruction *> checksGroup, Function * wrapperFunc);
     std::vector<Instruction *> safeCheckCodeForOneTask;
     std::set<Instruction *> safeCheckInstsInNonLoopBody;

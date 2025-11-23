@@ -70,7 +70,7 @@
 
 ## 수정 내역 요약
 
-### 2025-01-XX (오늘)
+### 최근 수정 사항
 - `PDGAnalysis.cpp`: `getNumUses()` → `use_empty()` 변경으로 segfault 해결
 - 디버그 출력 정리
 

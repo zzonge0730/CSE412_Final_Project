@@ -1,6 +1,6 @@
 # LLVM 17 포팅 시작 가이드
 
-## 오늘 작업 계획 (2024-11-19)
+## 오늘 작업 계획
 
 ### Phase 1: 환경 설정 및 소스 준비 ✅
 - [x] LLVM 17 Docker 환경 확인
@@ -81,6 +81,6 @@ cd build-catamaran-17
 
 - `LLVM17_UPGRADE_DECISION.md` - 업그레이드 결정 문서
 - `LLVM_VERSION_UPGRADE_ANALYSIS.md` - 버전 비교 분석
-- `2024-11-19_SESSION_LOG.md` - 오늘의 작업 일지
+- `docs/llvm14/*SESSION_LOG*.md` - 작업 일지 모음
 - LLVM 17 공식 문서: https://llvm.org/docs/
 

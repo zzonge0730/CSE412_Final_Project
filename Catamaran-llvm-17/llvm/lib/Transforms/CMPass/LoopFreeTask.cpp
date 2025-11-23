@@ -1,6 +1,7 @@
 #include "LoopFreeTask.h"
 // LLVM 14: Utils.h에 선언된 유틸리티 함수들 사용
 #include "Utils.h"
+#include "llvm/ADT/SmallVector.h"
 
 LoopFreeTask::LoopFreeTask(uint32_t id, Module * m) : loopFreeSeed(std::random_device()()) {
     this->ID = id;
@@ -33,6 +34,26 @@ void LoopFreeTask::transform() {
 
     SafeCheckTobeMerged();
     
+}
+
+namespace {
+void eraseInstructionSafelyLF(Instruction *Inst) {
+    if (Inst == nullptr) return;
+    if (!Inst->use_empty()) {
+        if (!Inst->getType()->isVoidTy()) {
+            Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
+        } else {
+            SmallVector<User *, 4> Users(Inst->user_begin(), Inst->user_end());
+            for (auto *U : Users) {
+                if (Instruction *UserInst = dyn_cast<Instruction>(U)) {
+                    eraseInstructionSafelyLF(UserInst);
+                }
+            }
+        }
+    }
+    Inst->dropAllReferences();
+    Inst->eraseFromParent();
+}
 }
 
 void LoopFreeTask::eraseSafeCheckCodes() {
@@ -152,11 +173,7 @@ void LoopFreeTask::eraseSafeCheckCodes() {
 
 
     for (auto inst : this->safeCheckCodeForOneTask) {
-        // Fix for LLVM 17 crash: Break all dependencies before erasing
-        if (!inst->getType()->isVoidTy()) {
-            inst->replaceAllUsesWith(UndefValue::get(inst->getType()));
-        }
-        inst->eraseFromParent();
+        eraseInstructionSafelyLF(inst);
     }
 }
 
@@ -176,7 +193,9 @@ void LoopFreeTask::SafeCheckTobeMerged() {
 
     
 
-    std::vector<Type *> wrapperFuncArgs;
+    Type * voidStarTy = PointerType::getUnqual(Type::getInt8Ty(ctx));
+    PointerType * voidPtrPtrTy = PointerType::getUnqual(voidStarTy);
+    std::vector<Type *> wrapperFuncArgs(1, voidStarTy);
     std::vector<Function *> checkFuncVec;
 
     std::string wrapperFuncName = "_spawn_loop_free_func_" + std::to_string(this->ID) + "_" + std::to_string(this->subID++);
@@ -192,30 +211,28 @@ void LoopFreeTask::SafeCheckTobeMerged() {
         checkFuncVec.push_back(fun);
     }
 
-    wrapperFuncArgs.reserve(totalNumArgs);
-    Type * voidStarTy = PointerType::getUnqual(Type::getInt8Ty(ctx));
-    for (int i = 0; i < totalNumArgs; i++) {
-        wrapperFuncArgs.push_back(voidStarTy);
-    }
-
     FunctionType * wrapperFuncType = FunctionType::get(Type::getVoidTy(ctx), wrapperFuncArgs, false);
 
     Function * wrapperFunc = cast<Function>(Function::Create(wrapperFuncType, Function::InternalLinkage, wrapperFuncName, this->M));
     BasicBlock * entryBB = BasicBlock::Create(ctx, "entry", wrapperFunc);
 
-    // LLVM 14: getArgumentList() 제거됨, args() 사용
-    auto wrapperFuncArgIt = wrapperFunc->arg_begin();
+    auto envArgIt = wrapperFunc->arg_begin();
+    Value * envBase = new BitCastInst(&*envArgIt, voidPtrPtrTy, "lf_env_base", entryBB);
+    unsigned envIndex = 0;
 
     for (int idx = 0; idx < checkFuncVec.size(); idx++) {
         std::vector<Value *> groupedCastArgs;
-        for (auto argIt = checkFuncVec[idx]->arg_begin(); argIt != checkFuncVec[idx]->arg_end(); ++argIt, ++wrapperFuncArgIt) {
+        for (auto argIt = checkFuncVec[idx]->arg_begin(); argIt != checkFuncVec[idx]->arg_end(); ++argIt, ++envIndex) {
             Type * tmpType = argIt->getType();
+            Value * idxVal = ConstantInt::get(Type::getInt32Ty(ctx), envIndex);
+            Value * slotPtr = GetElementPtrInst::Create(voidStarTy, envBase, idxVal, "lf_env_slot", entryBB);
+            Value * rawPtr = new LoadInst(voidStarTy, slotPtr, "", entryBB);
 
             if (tmpType->isPointerTy()) {
-                BitCastInst * bitcast = new BitCastInst(&*wrapperFuncArgIt, tmpType, "", entryBB);
+                BitCastInst * bitcast = new BitCastInst(rawPtr, tmpType, "", entryBB);
                 groupedCastArgs.push_back(bitcast);     
             } else {
-                BitCastInst * bitcast = new BitCastInst(&*wrapperFuncArgIt, PointerType::getUnqual(tmpType), "", entryBB);
+                BitCastInst * bitcast = new BitCastInst(rawPtr, PointerType::getUnqual(tmpType), "", entryBB);
                 // LoadInst * load = new LoadInst(bitcast, "", entryBB);
                 Type * destTy = Type::getInt64Ty(ctx);
                 if (tmpType->isIntegerTy(8)) {
@@ -238,7 +255,7 @@ void LoopFreeTask::SafeCheckTobeMerged() {
     }
 
     ReturnInst::Create(ctx, nullptr, entryBB);
-    genCtorForSpawn(wrapperFunc);
+    genCtorForSpawn(wrapperFunc, totalNumArgs);
 
     // errs() << "loop-free wrapperFunc: " << *wrapperFunc << "\n";
 
@@ -246,7 +263,7 @@ void LoopFreeTask::SafeCheckTobeMerged() {
 
     std::vector<Value *> needArgs = genSpawnArgs(checksGroup, wrapperFunc);
     errs() << "needArgSize: " << needArgs.size() << "\n";
-    if (needArgs.size() != totalNumArgs + 2) {
+    if (needArgs.size() != 3) {
         errs() << ">>>Num of NeedArgs is wrong...\n";
     }
 
@@ -283,7 +300,7 @@ void LoopFreeTask::SafeCheckTobeMerged() {
 
 }
 
-void LoopFreeTask::genCtorForSpawn(Function * wrapperFunc) {
+void LoopFreeTask::genCtorForSpawn(Function * wrapperFunc, unsigned ctorKey) {
     LLVMContext& ctx = this->M->getContext();
     uint32_t baseArgsForCtorSpawn = 2;
     std::vector<Type *> ctorSig(baseArgsForCtorSpawn);
@@ -312,7 +329,7 @@ void LoopFreeTask::genCtorForSpawn(Function * wrapperFunc) {
             FunctionType * ctorTy = FunctionType::get(Type::getVoidTy(ctx), ctorSig, false);
             // LLVM 14: getOrInsertFunction()는 FunctionCallee를 반환, getCallee()로 Constant* 얻기
             FunctionCallee ctorCallee = this->M->getOrInsertFunction(ctorName, ctorTy);
-            this->ctors[t] = cast<Constant>(ctorCallee.getCallee());
+            this->ctors[ctorKey] = cast<Constant>(ctorCallee.getCallee());
         }
 
         ctorSig.push_back(voidStarTy);
@@ -326,13 +343,14 @@ void LoopFreeTask::genCtorForSpawn(Function * wrapperFunc) {
 }
 std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> checksGroup, Function * wrapperFunc) {
     LLVMContext& ctx = this->M->getContext();
-    Type * voidStarTy = PointerType::getUnqual(Type::getInt8Ty(ctx));
+    PointerType * voidPtrType = PointerType::getUnqual(Type::getInt8Ty(ctx));
+    Type * voidStarTy = voidPtrType;
 
     std::vector<Value *> args{ConstantInt::get(Type::getInt32Ty(ctx), std::uniform_int_distribution<uint32_t>{}(this->loopFreeSeed)), wrapperFunc};
+    std::vector<Value *> packedArgs;
 
     for (int ind = 0; ind < checksGroup.size(); ind++) {
         CallInst * curCI = cast<CallInst>(checksGroup[ind]);
-        // LLVM 14: getNumArgOperands() 제거됨, arg_size() 사용
         for (int j = 0; j < (int)curCI->arg_size(); j++) {
             Value * arg = curCI->getArgOperand(j);
             Type * argTy = arg->getType();
@@ -340,20 +358,35 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
             if (argTy->isPointerTy()) {
                 castArg = arg;
             } else {
-                // castArg = new AllocaInst(argTy, "zyarg_", curCI);
-                // new StoreInst(arg, castArg, curCI);
-                // std::string varName = "zyarg_";
                 castArg = CastInst::Create(Instruction::IntToPtr, arg, voidStarTy, "zyarg_", curCI);
-
             }
             BitCastInst * bcInst = new BitCastInst(castArg, voidStarTy, "zybc_", curCI);
-            // errs() << "-215-bcInst:" << *bcInst << "\n";
-            args.push_back(bcInst);
+            packedArgs.push_back(bcInst);
         }
     }
+
+    Value *envPtrValue = ConstantPointerNull::get(voidPtrType);
+    Instruction *insertBefore = checksGroup.empty() ? wrapperFunc->getEntryBlock().getTerminator() : checksGroup.front();
+    if (!packedArgs.empty()) {
+        ArrayType *arrTy = ArrayType::get(voidStarTy, packedArgs.size());
+        IRBuilder<> envBuilder(insertBefore);
+        AllocaInst *envAlloca = envBuilder.CreateAlloca(arrTy, nullptr, "lf_spawn_env");
+        for (unsigned idx = 0; idx < packedArgs.size(); ++idx) {
+            Value *idxVals[] = {
+                ConstantInt::get(Type::getInt32Ty(ctx), 0),
+                ConstantInt::get(Type::getInt32Ty(ctx), idx)
+            };
+            Value *slotPtr = envBuilder.CreateInBoundsGEP(arrTy, envAlloca, idxVals, "lf_spawn_slot");
+            envBuilder.CreateStore(packedArgs[idx], slotPtr);
+        }
+        envPtrValue = envBuilder.CreateBitCast(envAlloca, voidStarTy, "lf_spawn_env_ptr");
+    }
+
+    args.push_back(envPtrValue);
     return args;
 }
 
 void LoopFreeTask::setMergeDirection(int direction) {
     this->mergedirection = direction;
 }
+

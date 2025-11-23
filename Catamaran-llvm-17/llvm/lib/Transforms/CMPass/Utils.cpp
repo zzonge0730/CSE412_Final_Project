@@ -7,6 +7,7 @@ using namespace llvm;
 bool IsSafeCheckCall(CallInst *CI){
     if(CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
+        if (callName.startswith("__asan_")) return true;
         if(callName.equals("__softboundcets_metadata_load") ||
         callName.equals("__softboundcets_temporal_load_dereference_check") ||
         callName.equals("__softboundcets_spatial_load_dereference_check") ||
@@ -55,6 +56,7 @@ bool IsSafeCheckCallStoreForMC(CallInst *CI){
 bool IsIntraTaskConsideredForSB(CallInst *CI) {
     if(CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
+        if (callName.startswith("__asan_")) return true;
         if( callName.equals("__softboundcets_temporal_load_dereference_check") ||
             callName.equals("__softboundcets_spatial_load_dereference_check") ||
             callName.equals("__softboundcets_temporal_store_dereference_check") ||
@@ -181,6 +183,7 @@ bool IsSafeCheckFun(StringRef funcName) {
 bool IsSafeCheckCallForLoopFree(CallInst *CI) {
     if (CI->getCalledFunction()) {
         StringRef callName = CI->getCalledFunction()->getName();
+        if (callName.startswith("__asan_")) return true;
         if (
             // callName.equals("__softboundcets_metadata_load") ||
             callName.equals("__softboundcets_temporal_load_dereference_check") ||

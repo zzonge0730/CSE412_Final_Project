@@ -44,9 +44,8 @@
 - `docs/llvm14/OPT_LOAD_TEST_STEPS.md` - opt 로드 단계
 - `docs/llvm14/TEST_CMPASS_LOAD.md` - CMPass 로드 테스트
 - `docs/llvm14/LLVM14_FILE_INDEX.md` - 파일 인덱스
-- `docs/llvm14/2024-11-18_SESSION_LOG.md` - 작업 일지
-- `docs/llvm14/2024-11-18_SESSION_SUMMARY.md` - 작업 요약
-- `docs/llvm14/2024-11-19_SESSION_LOG.md` - 작업 일지
+- `docs/llvm14/*SESSION_LOG*.md` - 작업 일지 모음
+- `docs/llvm14/*SESSION_SUMMARY*.md` - 작업 요약
 - `docs/llvm14/LLVM17_PORTING_START.md` - LLVM 17 포팅 시작
 - `docs/llvm14/LLVM17_PORTING_SUMMARY.md` - LLVM 17 포팅 요약
 - `docs/llvm14/LLVM17_UPGRADE_DECISION.md` - LLVM 17 업그레이드 결정
@@ -92,7 +91,7 @@
 - 백업 패치 문서들 → 핵심 정보만 `docs/reproduction.md`에 통합
 
 **삭제 가능:**
-- 세션 로그들 (2024-11-18, 2024-11-19) - 작업 과정 기록만 있고 핵심 정보는 다른 문서에 있음
+- 세션 로그들 (날짜 기반 파일명) - 작업 과정 기록만 있고 핵심 정보는 다른 문서에 있음
 - 중복된 가이드들 (OPT_LOAD_TEST_GUIDE, OPT_LOAD_TEST_STEPS, TEST_CMPASS_LOAD)
 
 ### 옵션 3: 현재 상태 유지

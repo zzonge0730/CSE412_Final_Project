@@ -2,339 +2,147 @@
 
 [English below]
 
-## MoveC-2mm 예제 실행
+> 모든 명령은 `./scripts/run-docker-llvm17.sh` 로 진입한 Docker 컨테이너 안에서 실행했다고 가정합니다. 컨테이너 밖에서 실행하면 GLIBC/라이브러리 버전 차이로 실패합니다.
 
-### 1. 순차 실행 (Sequential) - Baseline
+## 1. MoveC-2mm α (Baseline, C 버전)
 
 ```bash
-cd examples/llvm17
+./scripts/run-docker-llvm17.sh
 
-# IR 파일이 이미 있다면
-/opt/llvm-17/bin/clang++ -O3 MoveC-2mm-O0.ll -o MoveC-2mm-seq
-
-# 또는 소스에서 컴파일
-/opt/llvm-17/bin/clang++ -O3 MoveC-2mm.c -o MoveC-2mm-seq
-
-# 실행
-./MoveC-2mm-seq 128 128 128 128 0
+# 컨테이너 내부
+cd /workspace/examples
+/opt/llvm-17/bin/clang -O3 2mm.c -o 2mm
+/usr/bin/time -p ./2mm 1000 1000 1000 1000 0
 ```
 
-### 2. 병렬 실행 (Parallel) - Catamaran
+- 최신 실행 결과: `real 0.71s` (참고용, MoveC 미적용)
 
-#### 2.1 CMPass 빌드
+## 2. MoveC-2mm β (MoveC instrumentation)
+
+```bash
+cd /workspace/examples/llvm17
+export PATH=/workspace/movec/bin:$PATH
+movec --check-memsafe -c ../2mm.c -o MoveC-2mm.c   # 필요 시
+/opt/llvm-17/bin/clang -O3 MoveC-2mm.c -o MoveC-2mm
+/usr/bin/time -p ./MoveC-2mm 1000 1000 1000 1000 0
+```
+
+- 최신 실행 결과: `real 25.34s`
+- MoveC 런타임이 공간 오류를 경고하지만 실행은 완료됩니다.
+
+## 3. MoveC-2mm γ (Catamaran 병렬화)
+
+### 3.1 CMPass 빌드
 
 ```bash
 cd /workspace
 ./scripts/build-llvm17.sh
+# 결과: /workspace/build-catamaran-17/llvm/lib/Transforms/CMPass/CMPass.so
 ```
 
-또는 수동으로:
+### 3.2 IR 생성 및 Pass 실행
 
 ```bash
-cd build-catamaran-17
-cmake -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_DIR=/opt/llvm-17/lib/cmake/llvm \
-    -DCMAKE_CXX_STANDARD=17 \
-    ../Catamaran-llvm-17/llvm
-ninja CMPass
-```
-
-#### 2.2 Catamaran Pass 실행
-
-```bash
-cd examples/llvm17
-
+cd /workspace/examples/llvm17
+/opt/llvm-17/bin/clang -S -emit-llvm MoveC-2mm.c -o MoveC-2mm.ll
 PLUGIN=/workspace/build-catamaran-17/llvm/lib/Transforms/CMPass/CMPass.so
-
-# opt pass 실행 (크래시가 발생할 수 있지만 IR은 생성됨)
-/opt/llvm-17/bin/opt -disable-verify \
-    -load-pass-plugin=$PLUGIN \
-    -passes='function(mem2reg,loop-simplify,lcssa),Loops' \
-    -S < MoveC-2mm-O0.ll > CM-MoveC-2mm.ll 2>/dev/null
-
-# 또는 강제 덤프된 파일 사용 (크래시 후 생성됨)
-# ls -lh CM-MoveC-2mm.ll
+/opt/llvm-17/bin/opt -load-pass-plugin=$PLUGIN -passes=Loops \
+    MoveC-2mm.ll -o CM-MoveC-2mm.bc > MoveC-opt.log 2>&1
 ```
 
-#### 2.3 병렬 바이너리 컴파일 및 실행
+### 3.3 바이너리 빌드
 
 ```bash
-# 컴파일
-/opt/llvm-17/bin/clang++ -O3 -pthread -std=c++17 \
-    -DNUM_THREADS=8 \
-    CM-MoveC-2mm.ll \
-    ../../runtime/ThreadPool.cpp \
+/opt/llvm-17/bin/clang++ -std=c++17 -O3 -pthread -DNUM_THREADS=8 \
+    CM-MoveC-2mm.bc /workspace/runtime/ThreadPool.cpp -lm \
     -o CM-MoveC-2mm
-
-# 실행
-./CM-MoveC-2mm 128 128 128 128 0
 ```
 
-### 3. 성능 측정
+### 3.4 실행 (현재 이슈)
 
 ```bash
-# 순차 실행 시간 측정
-echo "=== Sequential Run ==="
-for i in {1..3}; do
-    echo "Run $i:"
-    time ./MoveC-2mm-seq 128 128 128 128 0
-done
-
-# 병렬 실행 시간 측정
-echo "=== Parallel Run ==="
-for i in {1..3}; do
-    echo "Run $i:"
-    time ./CM-MoveC-2mm 128 128 128 128 0
-done
+/usr/bin/time -p ./CM-MoveC-2mm 1000 1000 1000 1000 0
 ```
 
-## ASAN 예제 실행
+- 현재 현상: 실행 즉시 종료(출력 없음). Docker 로그/`dmesg`에서 추가 정보 필요.
+- 권장 디버깅:
+  - 입력 축소: `./CM-MoveC-2mm 16 16 16 16 0`
+  - `dmesg | tail -50` 로 OOM 여부 확인
+  - `strace -o cm-movec.strace ./CM-MoveC-2mm ...`
 
-### 1. ASAN IR 생성
+## 4. ASAN (LLVM 17 경로) – Pending
 
-```bash
-cd examples/llvm17
+- LLVM 3.5.2 AddressSanitizer 빌드 및 `/workspace/llvm-3.5.2` 연동 필요
+- TODO
+  1. `clang -fsanitize=address -asan-instrumentation-with-call-threshold=0` 으로 IR 생성
+  2. 동일한 `opt -passes=Loops` 파이프라인 실행
+  3. `clang++ -fsanitize=address` 로 링크 및 실행
+- 현재까지 LLVM 17 컨테이너에서 실행된 ASAN 테스트는 없음
 
-# ASAN으로 컴파일하여 IR 생성
-/opt/llvm-17/bin/clang -S -emit-llvm \
-    -fsanitize=address -O1 \
-    -o ASAN-2mm.ll \
-    2mm.c
-```
+## 5. 최신 측정 요약
 
-### 2. Catamaran Pass 실행
+| Variant | Command | Result |
+| --- | --- | --- |
+| α (C baseline) | `/opt/llvm-17/bin/clang -O3 2mm.c -o 2mm` → `./2mm 1000…` | `real 0.71s` |
+| β (MoveC) | `/opt/llvm-17/bin/clang -O3 MoveC-2mm.c -o MoveC-2mm` → `./MoveC-2mm 1000…` | `real 25.34s`, 경고 발생 |
+| γ (Catamaran) | `opt -passes=Loops` → `clang++ ... -o CM-MoveC-2mm` → 실행 | 바이너리 빌드 OK, 실행 즉시 종료 |
+| ASAN β/γ | — | 아직 실행 전 |
 
-```bash
-PLUGIN=/workspace/build-catamaran-17/llvm/lib/Transforms/CMPass/CMPass.so
+## 6. 문제 해결 참고
 
-/opt/llvm-17/bin/opt -disable-verify \
-    -load-pass-plugin=$PLUGIN \
-    -passes='function(mem2reg,loop-simplify,lcssa),Loops' \
-    -S < ASAN-2mm.ll > CM-ASAN-2mm.ll 2>/dev/null
-```
-
-### 3. 컴파일 및 실행
-
-```bash
-/opt/llvm-17/bin/clang++ -O3 -pthread -std=c++17 \
-    -DNUM_THREADS=8 \
-    CM-ASAN-2mm.ll \
-    ../../runtime/ThreadPool.cpp \
-    -o CM-ASAN-2mm
-
-./CM-ASAN-2mm 128 128 128 128 0
-```
-
-## 다른 벤치마크 테스트
-
-### 3mm, gemm 등
-
-```bash
-# 예제 디렉토리 확인
-ls examples/llvm17/
-
-# 각 벤치마크에 대해 동일한 과정 반복
-# 1. IR 생성 또는 기존 IR 사용
-# 2. Catamaran pass 실행
-# 3. 컴파일 및 실행
-# 4. 성능 측정
-```
-
-## 스레드 수 변경 테스트
-
-```bash
-# NUM_THREADS를 변경하여 컴파일
-/opt/llvm-17/bin/clang++ -O3 -pthread -std=c++17 \
-    -DNUM_THREADS=4 \  # 또는 8, 16 등
-    CM-MoveC-2mm.ll \
-    ../../runtime/ThreadPool.cpp \
-    -o CM-MoveC-2mm-4threads
-
-# 성능 비교
-time ./CM-MoveC-2mm-4threads 128 128 128 128 0
-time ./CM-MoveC-2mm 128 128 128 128 0  # 8 threads
-```
-
-## 예상 결과
-
-MoveC-2mm (128x128 입력):
-- **순차 실행**: ~0.198s (평균)
-- **병렬 실행 (8 threads)**: ~0.028s (평균)
-- **속도 향상**: ~7.1x
-
-## 문제 해결
-
-- **크래시 발생**: `opt` 실행 시 크래시가 발생해도 `CM-MoveC-2mm.ll` 파일은 생성됩니다. 강제 덤프 기능이 작동합니다.
-- **컴파일 에러**: 일부 `UndefValue` 관련 에러가 발생할 수 있지만, 바이너리는 생성됩니다.
-- 자세한 내용은 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)를 참고하세요.
+- MoveC 런타임 경고: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)#1
+- Catamaran 실행 즉시 종료: 동일 문서의 “MoveC γ 실행 실패” 섹션 참고 (추가 예정)
+- Docker 외부 실행 금지: glibc 2.31 기준
 
 ---
 
-## Running MoveC-2mm Example
+## Running MoveC-2mm (English)
 
-### 1. Sequential Execution - Baseline
-
-```bash
-cd examples/llvm17
-
-# If IR file already exists
-/opt/llvm-17/bin/clang++ -O3 MoveC-2mm-O0.ll -o MoveC-2mm-seq
-
-# Or compile from source
-/opt/llvm-17/bin/clang++ -O3 MoveC-2mm.c -o MoveC-2mm-seq
-
-# Run
-./MoveC-2mm-seq 128 128 128 128 0
-```
-
-### 2. Parallel Execution - Catamaran
-
-#### 2.1 Build CMPass
+### 1. α Baseline (C)
 
 ```bash
-cd /workspace
-./scripts/build-llvm17.sh
+./scripts/run-docker-llvm17.sh
+cd /workspace/examples
+/opt/llvm-17/bin/clang -O3 2mm.c -o 2mm
+/usr/bin/time -p ./2mm 1000 1000 1000 1000 0
 ```
 
-Or manually:
+### 2. β MoveC Instrumentation
 
 ```bash
-cd build-catamaran-17
-cmake -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_DIR=/opt/llvm-17/lib/cmake/llvm \
-    -DCMAKE_CXX_STANDARD=17 \
-    ../Catamaran-llvm-17/llvm
-ninja CMPass
+cd /workspace/examples/llvm17
+export PATH=/workspace/movec/bin:$PATH
+movec --check-memsafe -c ../2mm.c -o MoveC-2mm.c   # optional (already checked-in)
+/opt/llvm-17/bin/clang -O3 MoveC-2mm.c -o MoveC-2mm
+/usr/bin/time -p ./MoveC-2mm 1000 1000 1000 1000 0
 ```
 
-#### 2.2 Run Catamaran Pass
+### 3. γ Catamaran Parallelization
 
-```bash
-cd examples/llvm17
+1. `./scripts/build-llvm17.sh`
+2. `clang -S -emit-llvm MoveC-2mm.c -o MoveC-2mm.ll`
+3. `/opt/llvm-17/bin/opt -load-pass-plugin=$PLUGIN -passes=Loops MoveC-2mm.ll -o CM-MoveC-2mm.bc`
+4. `/opt/llvm-17/bin/clang++ -std=c++17 -O3 -pthread -DNUM_THREADS=8 CM-MoveC-2mm.bc /workspace/runtime/ThreadPool.cpp -lm -o CM-MoveC-2mm`
+5. `./CM-MoveC-2mm 1000 1000 1000 1000 0`
 
-PLUGIN=/workspace/build-catamaran-17/llvm/lib/Transforms/CMPass/CMPass.so
+Current status: steps 1–4 succeed, step 5 exits immediately. Use smaller inputs and `dmesg/strace` to capture the root cause.
 
-# Run opt pass (may crash but IR will be generated)
-/opt/llvm-17/bin/opt -disable-verify \
-    -load-pass-plugin=$PLUGIN \
-    -passes='function(mem2reg,loop-simplify,lcssa),Loops' \
-    -S < MoveC-2mm-O0.ll > CM-MoveC-2mm.ll 2>/dev/null
+### 4. ASAN β/γ
 
-# Or use manually dumped file (created after crash)
-# ls -lh CM-MoveC-2mm.ll
-```
+- LLVM 3.5.2 build + runtime hookup pending.
+- Steps mirror the MoveC flow once `clang -fsanitize=address` binaries are available.
 
-#### 2.3 Compile and Run Parallel Binary
+### 5. Latest Measurements
 
-```bash
-# Compile
-/opt/llvm-17/bin/clang++ -O3 -pthread -std=c++17 \
-    -DNUM_THREADS=8 \
-    CM-MoveC-2mm.ll \
-    ../../runtime/ThreadPool.cpp \
-    -o CM-MoveC-2mm
+| Variant | real time | Notes |
+| --- | --- | --- |
+| Baseline α | 0.71s | `2mm` |
+| MoveC β | 25.34s | MoveC runtime warnings |
+| MoveC γ | N/A | Binary builds; runtime exits |
+| ASAN β/γ | N/A | Not executed yet |
 
-# Run
-./CM-MoveC-2mm 128 128 128 128 0
-```
+### 6. Troubleshooting
 
-### 3. Performance Measurement
-
-```bash
-# Measure sequential execution time
-echo "=== Sequential Run ==="
-for i in {1..3}; do
-    echo "Run $i:"
-    time ./MoveC-2mm-seq 128 128 128 128 0
-done
-
-# Measure parallel execution time
-echo "=== Parallel Run ==="
-for i in {1..3}; do
-    echo "Run $i:"
-    time ./CM-MoveC-2mm 128 128 128 128 0
-done
-```
-
-## Running ASAN Example
-
-### 1. Generate ASAN IR
-
-```bash
-cd examples/llvm17
-
-# Compile with ASAN to generate IR
-/opt/llvm-17/bin/clang -S -emit-llvm \
-    -fsanitize=address -O1 \
-    -o ASAN-2mm.ll \
-    2mm.c
-```
-
-### 2. Run Catamaran Pass
-
-```bash
-PLUGIN=/workspace/build-catamaran-17/llvm/lib/Transforms/CMPass/CMPass.so
-
-/opt/llvm-17/bin/opt -disable-verify \
-    -load-pass-plugin=$PLUGIN \
-    -passes='function(mem2reg,loop-simplify,lcssa),Loops' \
-    -S < ASAN-2mm.ll > CM-ASAN-2mm.ll 2>/dev/null
-```
-
-### 3. Compile and Run
-
-```bash
-/opt/llvm-17/bin/clang++ -O3 -pthread -std=c++17 \
-    -DNUM_THREADS=8 \
-    CM-ASAN-2mm.ll \
-    ../../runtime/ThreadPool.cpp \
-    -o CM-ASAN-2mm
-
-./CM-ASAN-2mm 128 128 128 128 0
-```
-
-## Testing Other Benchmarks
-
-### 3mm, gemm, etc.
-
-```bash
-# Check example directory
-ls examples/llvm17/
-
-# Repeat the same process for each benchmark
-# 1. Generate IR or use existing IR
-# 2. Run Catamaran pass
-# 3. Compile and run
-# 4. Measure performance
-```
-
-## Testing with Different Thread Counts
-
-```bash
-# Compile with different NUM_THREADS
-/opt/llvm-17/bin/clang++ -O3 -pthread -std=c++17 \
-    -DNUM_THREADS=4 \  # or 8, 16, etc.
-    CM-MoveC-2mm.ll \
-    ../../runtime/ThreadPool.cpp \
-    -o CM-MoveC-2mm-4threads
-
-# Compare performance
-time ./CM-MoveC-2mm-4threads 128 128 128 128 0
-time ./CM-MoveC-2mm 128 128 128 128 0  # 8 threads
-```
-
-## Expected Results
-
-MoveC-2mm (128x128 input):
-- **Sequential**: ~0.198s (average)
-- **Parallel (8 threads)**: ~0.028s (average)
-- **Speedup**: ~7.1x
-
-## Troubleshooting
-
-- **Crash occurs**: Even if `opt` crashes, `CM-MoveC-2mm.ll` file will be created. Manual dump feature works.
-- **Compilation errors**: Some `UndefValue` related errors may occur, but binary will be created.
-- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for details.
+- MoveC warnings / Docker-only runs → [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- γ crash/exit → capture logs and reference the same guide
 

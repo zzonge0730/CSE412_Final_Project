@@ -4,40 +4,56 @@
 
 ## 자주 발생하는 문제
 
-### 1. `opt` 실행 시 크래시 (Exit code 134)
+### 1. MoveC 런타임이 공간 오류를 보고함
 
 **증상**:
 ```bash
-opt: ... Assertion `materialized_use_empty() && "Uses remain when a value is destroyed!"' failed.
-Aborted (core dumped)
+examples/2mm.c:82:35: error: dereferenced pointer 'A[i][k]' ... [spatial error]
+double free or corruption (!prev)
 ```
 
-**원인**: LLVM 17의 엄격한 검증으로 인해 `eraseSafeCheckCodes`에서 발생하는 use-after-free 문제
+**원인**: MoveC 3.x의 메모리 접근 검사기가 큰 입력(128×128)뿐 아니라 현재는 작은 입력에서도 경계를 벗어났다고 판단한다. Catamaran 변환과 무관하게 원본 MoveC 바이너리에서도 동일한 경고가 발생한다.
 
 **해결 방법**:
-- 크래시가 발생해도 `CM-MoveC-2mm.ll` 파일은 생성됩니다 (강제 덤프 기능)
-- 생성된 IR 파일을 사용하여 컴파일 진행
-- 이는 알려진 이슈이며 기능에는 영향을 주지 않습니다
+- 오류 메시지는 런타임 자체의 한계이므로 그대로 기록해 두고 참고용 성능 수치만 확인한다.
+- 스모크 테스트가 필요하면 `./CM-MoveC-2mm 16 16 16 16 0` 처럼 입력 크기를 줄여 실행한다.
+- 다른 PolyBench 커널 또는 ASAN 예제로 교차 검증한다.
 
-**임시 해결책**:
-```bash
-# -disable-verify 옵션 사용
-opt -disable-verify -load-pass-plugin=$PLUGIN -passes='...' ...
-```
-
-### 2. 컴파일 에러: `use of undefined value`
+### 2. MoveC γ 실행이 즉시 종료됨
 
 **증상**:
 ```bash
-error: use of undefined value '%cmp14'
+/usr/bin/time -p ./CM-MoveC-2mm 1000 1000 1000 1000 0
+# 출력 없이 종료, 때때로 컨테이너가 바로 빠져나옴
 ```
 
-**원인**: `UndefValue`로 교체된 값이 여전히 사용되고 있음
+**가능한 원인**:
+- MoveC 런타임이 내부에서 `exit()` 호출 (공간 오류 후)
+- 입력 크기가 커서 OOM Killer 개입
+- ThreadPool 초기화 중 단 asserted (로그 미출력)
+
+**진단 절차**:
+1. 입력 축소: `./CM-MoveC-2mm 16 16 16 16 0`
+2. `dmesg | tail -50` 로 OOM/EVENT 확인
+3. `strace -f -o cm-movec.strace ./CM-MoveC-2mm ...`
+4. ThreadPool에 임시 로그 추가 (`ThreadPool.cpp`) 후 재빌드
+
+**우회**:
+- 먼저 α/β 타이밍을 확보하고, γ는 위 단계를 진행 중이라고 README/STATUS에 명시한다.
+- 필요 시 MoveC 대신 다른 PolyBench 커널로 교차 검증한다.
+
+### 2. Docker 밖에서 실행 시 라이브러리 오류
+
+**증상**:
+```bash
+./CM-MoveC-2mm: error while loading shared libraries: libc++.so: cannot open shared object file
+```
+
+**원인**: Catamaran 바이너리는 Docker 이미지 안의 `/opt/llvm-17` 및 GLIBC 버전에 맞춰 빌드된다. 호스트 환경에서 직접 실행하면 필요한 라이브러리를 찾지 못한다.
 
 **해결 방법**:
-- 일부 에러가 발생해도 바이너리는 생성됩니다
-- 생성된 바이너리로 실행 가능
-- 완전한 해결을 위해서는 `eraseSafeCheckCodes` 로직 개선 필요
+- `./scripts/run-docker-llvm17.sh` 로 컨테이너에 진입한 뒤 모든 명령을 실행한다.
+- 실행 파일을 호스트로 복사해야 한다면 동일한 LLVM/GLIBC 조합을 갖춘 환경에서만 실행한다.
 
 ### 3. Docker 이미지 빌드 실패
 
@@ -202,40 +218,56 @@ chmod +x CM-MoveC-2mm
 
 ## Common Issues
 
-### 1. Crash when running `opt` (Exit code 134)
+### 1. MoveC runtime reports spatial errors
 
 **Symptom**:
 ```bash
-opt: ... Assertion `materialized_use_empty() && "Uses remain when a value is destroyed!"' failed.
-Aborted (core dumped)
+examples/2mm.c:82:35: error: dereferenced pointer 'A[i][k]' ... [spatial error]
+double free or corruption (!prev)
 ```
 
-**Cause**: Use-after-free issue in `eraseSafeCheckCodes` due to LLVM 17's strict validation
+**Cause**: The MoveC memory-safety runtime from the original artifact flags the 2mm kernel as out-of-bounds on large inputs (and currently even on smaller inputs). The Catamaran pass emits valid IR; the warnings originate from the MoveC instrumentation itself.
 
 **Solution**:
-- Even if crash occurs, `CM-MoveC-2mm.ll` file will be created (manual dump feature)
-- Use the generated IR file to compile
-- This is a known issue and does not affect functionality
+- Record the warnings for reference and treat the timing numbers as indicative only.
+- For a smoke test, run `./CM-MoveC-2mm 16 16 16 16 0`.
+- Use other PolyBench kernels or the ASAN example to cross-check the pass outputs.
+
+### 2. MoveC γ binary exits immediately
+
+**Symptom**:
+```bash
+/usr/bin/time -p ./CM-MoveC-2mm 1000 1000 1000 1000 0
+# no output, process exits instantly (sometimes killed)
+```
+
+**Possible causes**:
+- MoveC runtime calling `exit()` after raising spatial errors
+- OOM killer due to large allocations
+- ThreadPool initialization failure without stderr
+
+**Debug steps**:
+1. Try smaller inputs (`16 16 16 16 0`)
+2. Check `dmesg | tail -50`
+3. Run with `strace -f -o cm-movec.strace ...`
+4. Add temporary logging inside `runtime/ThreadPool.cpp` and rebuild
 
 **Workaround**:
-```bash
-# Use -disable-verify option
-opt -disable-verify -load-pass-plugin=$PLUGIN -passes='...' ...
-```
+- Record α/β timing first, mark γ as “pending investigation” in docs.
+- Use an alternate kernel/ASAN test for cross-validation while MoveC debugging continues.
 
-### 2. Compilation Error: `use of undefined value`
+### 2. Binary fails to run outside Docker
 
 **Symptom**:
 ```bash
-error: use of undefined value '%cmp14'
+./CM-MoveC-2mm: error while loading shared libraries: libc++.so: cannot open shared object file
 ```
 
-**Cause**: Value replaced with `UndefValue` is still being used
+**Cause**: The binaries are linked against the libraries shipped in the Docker images (`/opt/llvm-17`, matching glibc). Running them directly on the host misses those dependencies.
 
 **Solution**:
-- Binary will be created despite some errors
-- Generated binary can be executed
-- Full solution requires improving `eraseSafeCheckCodes` logic
+- Enter the container via `./scripts/run-docker-llvm17.sh` and run all commands there.
+- If the binary must run on the host, replicate the exact LLVM/glibc combination used inside the container.
 
 ### 3. Docker Image Build Failure
 

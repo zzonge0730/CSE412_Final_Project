@@ -51,6 +51,27 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
     
     Constant * joinFunc = generateJoinFunc();
 
+    auto moduleHasASANChecks = [&]() -> bool {
+        for (Function &F : M) {
+            if (F.isDeclaration() || F.isIntrinsic()) continue;
+            for (BasicBlock &BB : F) {
+                for (Instruction &I : BB) {
+                    if (auto *CI = dyn_cast<CallInst>(&I)) {
+                        if (auto *callee = CI->getCalledFunction()) {
+                            if (callee->getName().startswith("__asan_")) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }();
+
+    bool performSafeCheckErase = false;
+    bool shouldEraseSafeChecks = performSafeCheckErase && !moduleHasASANChecks;
+
     #if ENABLELOOP
     errs() << "DEBUG: Calling getLoopStructures\n";
     std::vector<LoopStructure *> * loopStructures = this->getLoopStructures(AM);
@@ -58,8 +79,8 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
 
     if (loopStructures->size() == 0) {
         errs() << "There is no loop to consider...\n";
-        delete loopStructures;
-        return PreservedAnalyses::all();
+        // delete loopStructures;
+        // return PreservedAnalyses::all();
     }
 
     // for (auto loopS : *loopStructures) {
@@ -72,10 +93,20 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
 
     // }
 
-    //generate the nesting forest
-    auto forest = this->organizeLoopsInTheirNestingForest(*loopStructures, AM);
-    delete loopStructures;
+    StayConnectedNestedLoopForest *forest = nullptr;
+    std::vector<DOALLTask *> loopTasks;
+    if (moduleHasASANChecks) {
+        errs() << "DEBUG: ASAN instrumentation detected - skipping DOALL transformation\n";
+        delete loopStructures;
+    } else {
+        //generate the nesting forest
+        forest = this->organizeLoopsInTheirNestingForest(*loopStructures, AM);
+        delete loopStructures;
+    }
 
+    if (!forest) {
+        errs() << "DEBUG: DOALL phase skipped\n";
+    } else {
     //print the loops
     auto trees = forest->getTrees();
     for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
@@ -122,7 +153,6 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
     //parallelize the loop we selected, from outermost to the inner ones
     bool modified = false;
     std::unordered_map<BasicBlock *, bool> modifiedBBs{};
-    std::vector<DOALLTask *> loopTasks;
     // errs() << "tree size: " << forest->getTrees().size() << "\n";
     for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
         //select the loop to parallelize
@@ -330,6 +360,7 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                 task->setLiveInInitVal(liveInInitVal);
 
                 errs() << "setLiveInInitVal...\n";
+
                 // analysis liveInVars relations
                 for (auto pair : bitcastLiveInVarRelated) {
                     std::unordered_set<Instruction *> workListForBitcast{cast<Instruction>(pair.first)};
@@ -385,8 +416,9 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                             if (!isMovec && callName.startswith("__RV_check")) {
                                 isMovec = true;
                             }
-                            errs() << "DEBUG: IsSafeCheckCallForMovec returned " << isMovec << " for " << callName << "\n"; errs().flush(); 
-                            if (isMovec) { safecheckCallInst.push_back(&I); }
+                            bool isAsan = IsSafeCheckCall(CI);
+                            errs() << "DEBUG: IsSafeCheckCallForMovec returned " << isMovec << ", IsSafeCheckCall returned " << isAsan << " for " << callName << "\n"; errs().flush(); 
+                            if (isMovec || isAsan) { safecheckCallInst.push_back(&I); }
                             #if SafeC
                             if (callName.startswith("_safeC_shadow_stack_store_bound")) {
                                 relatedFlag = true;
@@ -410,6 +442,52 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                         }
                     }
                 }
+                
+                // Manual Live-In Collection for MoveC Safe Checks (Fallback)
+                for (Instruction * I : safecheckCallInst) {
+                    CallInst * CI = dyn_cast<CallInst>(I);
+                    if (!CI) continue;
+                    
+                    for (unsigned i = 0; i < CI->arg_size(); ++i) {
+                        Value * Op = CI->getArgOperand(i);
+                        if (Instruction * OpInst = dyn_cast<Instruction>(Op)) {
+                            if (!ls->isIncluded(OpInst)) {
+                                if (!task->hasLiveInVar(OpInst)) {
+                                    task->addLiveInVar(OpInst);
+                                }
+                            }
+                        } else if (Argument * Arg = dyn_cast<Argument>(Op)) {
+                             if (!task->hasLiveInVar(Arg)) {
+                                 task->addLiveInVar(Arg);
+                             }
+                        }
+                    }
+                }
+
+                auto addExternalLiveInIfNeeded = [&](Value *V) {
+                    if (isa<Constant>(V)) return;
+                    if (auto *Arg = dyn_cast<Argument>(V)) {
+                        if (!task->hasLiveInVar(Arg)) {
+                            task->addLiveInVar(Arg);
+                        }
+                        return;
+                    }
+                    if (auto *InstVal = dyn_cast<Instruction>(V)) {
+                        if (ls->isIncluded(InstVal)) return;
+                        if (!task->hasLiveInVar(InstVal)) {
+                            task->addLiveInVar(InstVal);
+                        }
+                    }
+                };
+
+                for (auto BB : ls->getBasicBlocks()) {
+                    for (Instruction &LoopInst : *BB) {
+                        for (Value *Op : LoopInst.operands()) {
+                            addExternalLiveInIfNeeded(Op);
+                        }
+                    }
+                }
+
                 // for (auto inst : customedFunRelatedCodeInLoop) {
                 //     errs() << "codeFunRelatedInst: " << *inst << "\n";
                 // }
@@ -849,6 +927,7 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
         // }
         errs() << "DEBUG: Finished ENABLELOOP block\n";
     }
+    }
     #endif 
 
     #if ENABLELOOPFREE
@@ -924,6 +1003,7 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
             for (Instruction& I : BB) {
                 if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                     if (IsSafeCheckCallForLoopFree(CI)) {
+                        errs() << "DEBUG: Found LoopFree SafeCheck: " << *CI << "\n";
                         safeCheckCallInstInNonLoopBody.push_back(&I);
                         safeCheckNonLoop.insert(&I);
                     }
@@ -1183,10 +1263,10 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
     #if ENABLELOOP
     errs() << "DEBUG: Loop Tasks Transformation Start. Size: " << loopTasks.size() << "\n";
     for (auto task : loopTasks) {
-        errs() << "---naive task: " << "\n";
+        errs() << "DOALLTask: transforming (naive view)\n";
         // task->transform();
         task->splitLoop();
-        errs() << "---final task: " << "\n";
+        errs() << "DOALLTask: transformed\n";
     }
     #endif
 
@@ -1198,19 +1278,23 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
     #endif
 
     //erase original safe check codes in original loop
-    #if ENABLELOOP
-    errs() << "DEBUG: Erasing Safe Check Codes (Loop)\n";
-    for (auto task : loopTasks) {
-        task->eraseSafeCheckCodes();
-    }
-    #endif
+    if (shouldEraseSafeChecks) {
+        #if ENABLELOOP
+        errs() << "DEBUG: Erasing Safe Check Codes (Loop)\n";
+        for (auto task : loopTasks) {
+            task->eraseSafeCheckCodes();
+        }
+        #endif
 
-    #if ENABLELOOPFREE
-    errs() << "DEBUG: Erasing Safe Check Codes (LoopFree)\n";
-    for (auto t : loopFreeTasks) {
-        t->eraseSafeCheckCodes();
+        #if ENABLELOOPFREE
+        errs() << "DEBUG: Erasing Safe Check Codes (LoopFree)\n";
+        for (auto t : loopFreeTasks) {
+            t->eraseSafeCheckCodes();
+        }
+        #endif
+    } else {
+        errs() << "DEBUG: Skipping safe check erasure (disabled)\n";
     }
-    #endif
 
     // errs() << "Final module: \n";
     // errs() << *this->program << "\n";

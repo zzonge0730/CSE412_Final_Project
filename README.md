@@ -10,8 +10,8 @@ Catamaran은 메모리 안전성 검사(MoveC, ASAN 등)를 병렬화하여 성�
 
 - **Loop-Free Metadata Parallelization**: 루프 외부의 메타데이터 검사를 병렬화
 - **Loop Parallelization (DOALL)**: 루프 내부의 검사를 병렬화
-- **MoveC 지원**: ~7.1x 성능 향상 (MoveC-2mm, 128x128 기준)
-- **ASAN 지원**: AddressSanitizer 검사 병렬화
+- **MoveC 지원**: LLVM 17 포팅본에서 Loop-Free·DOALL 경로 모두 동작 (런타임 이슈는 MoveC 자체 문제)
+- **ASAN 지원**: Loop-Free 경로는 LLVM 17 빌드까지 완료, DOALL 보강 예정
 - **LLVM 3.4, 17 지원**: 다양한 LLVM 버전 지원
 
 ## 빠른 시작
@@ -48,16 +48,21 @@ docker build -f docker/Dockerfile.llvm34 -t catamaran:llvm34 .
 - [문제 해결](docs/TROUBLESHOOTING.md) - 자주 발생하는 문제 및 해결 방법
 - [LLVM 17 포팅 상태](docs/llvm17-port/STATUS.md) - 포팅 진행 상황
 
-## 성능 결과
+## LLVM 17 테스트 스냅샷
 
-MoveC-2mm (128x128 입력):
-- **순차 실행**: ~0.198s (평균)
-- **병렬 실행**: ~0.028s (평균)
-- **속도 향상**: **~7.1x**
+- **Baseline (α)**: `2mm`를 LLVM 17 `clang -O3`로 빌드 후 `1000 1000 1000 1000 0` 입력으로 실행 → `real 0.71s`
+- **MoveC β**: `examples/llvm17/MoveC-2mm.c`를 `clang -O3`로 빌드 후 동일 입력 실행 → `real 25.34s` (MoveC 런타임 경고는 기존과 동일하게 발생)
+- **MoveC γ**: `opt -passes=Loops`로 `CM-MoveC-2mm.bc` 생성 및 `clang++` 링크까지 완료. 실행 시 Docker 프로세스가 즉시 종료되어 결과가 수집되지 않음 (잠재적 런타임/자원 이슈, [문제 해결 가이드](docs/TROUBLESHOOTING.md) 참고).
+- **ASAN β/γ**: LLVM 17 경로는 아직 실행 전. LLVM 3.5.2 도구체인 설정 이후 교차 검증 예정.
+
+자세한 커맨드와 로그는 [docs/TESTING.md](docs/TESTING.md)와 [docs/llvm17-port/STATUS.md](docs/llvm17-port/STATUS.md)에 기록했습니다.
 
 ## 알려진 이슈
 
-⚠️ **`opt` 실행 시 크래시 (Exit code 134)**: LLVM 17에서 `opt` 종료 시 크래시가 발생할 수 있지만, IR 파일은 정상적으로 생성됩니다. 자세한 내용은 [문제 해결 가이드](docs/TROUBLESHOOTING.md)를 참고하세요.
+- Catamaran 바이너리는 Docker 컨테이너 안에서 빌드/실행했을 때만 검증되었습니다. 컨테이너 밖에서 실행하면 필요한 라이브러리 및 경로가 달라 런타임 에러가 발생할 수 있습니다.
+- MoveC 런타임이 2mm 예제의 큰 입력(예: 128×128)에서 공간 오류를 보고합니다. 현재는 작은 입력(예: 16×16)에서도 동일 경고가 발생하므로 결과는 참고용입니다.
+- MoveC γ 실행은 현재 Docker에서 프로세스가 즉시 종료되어 벤치마크 결과를 얻지 못했습니다. 원인 규명을 위해 입력 축소, `dmesg` 확인, ThreadPool 로깅 등 추가 조사가 필요합니다.
+- ASAN β/γ 파이프라인은 LLVM 17용 도구체인 연결 전이라 아직 실행되지 않았습니다.
 
 ## 프로젝트 구조
 
@@ -91,8 +96,8 @@ Catamaran is a system that parallelizes memory safety checks (MoveC, ASAN, etc.)
 
 - **Loop-Free Metadata Parallelization**: Parallelizes metadata checks outside loops
 - **Loop Parallelization (DOALL)**: Parallelizes checks inside loops
-- **MoveC Support**: ~7.1x speedup (MoveC-2mm, 128x128)
-- **ASAN Support**: Parallelizes AddressSanitizer checks
+- **MoveC Support**: LLVM 17 port covers both loop-free and DOALL paths (runtime warnings originate from upstream MoveC)
+- **ASAN Support**: Loop-free path builds on LLVM 17; DOALL fixes are queued
 - **LLVM 3.4, 17 Support**: Multiple LLVM versions supported
 
 ## Quick Start
@@ -129,16 +134,19 @@ See [Installation Guide](docs/SETUP.md) and [Testing Guide](docs/TESTING.md) for
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [LLVM 17 Porting Status](docs/llvm17-port/STATUS.md) - Porting progress
 
-## Performance Results
+## LLVM 17 Test Snapshot
 
-MoveC-2mm (128x128 input):
-- **Sequential**: ~0.198s (average)
-- **Parallel**: ~0.028s (average)
-- **Speedup**: **~7.1x**
+- **Baseline (α)**: `clang -O3 examples/2mm.c -o 2mm` → `./2mm 1000 1000 1000 1000 0` → `real 0.71s`
+- **MoveC β**: `clang -O3 examples/llvm17/MoveC-2mm.c -o MoveC-2mm` → same input → `real 25.34s` (MoveC runtime warnings still show up)
+- **MoveC γ**: `opt -passes=Loops` + `clang++` link succeed, but running `CM-MoveC-2mm` inside Docker exits immediately (suspected resource/runtime issue—see [Troubleshooting](docs/TROUBLESHOOTING.md))
+- **ASAN β/γ**: Pending; LLVM 3.5.2 AddressSanitizer toolchain still being wired into the LLVM 17 build.
 
 ## Known Issues
 
-⚠️ **Crash when running `opt` (Exit code 134)**: A crash may occur when `opt` exits in LLVM 17, but the IR file is generated successfully. See [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for details.
+- Catamaran binaries have only been validated inside the Docker container. Running them directly on the host may fail because the required libraries and paths differ.
+- The MoveC runtime reports spatial errors on both large and small inputs, so timing numbers are reference only until the upstream tool is fixed.
+- The MoveC γ binary currently exits immediately when run inside Docker, so no parallel timing numbers are available yet. Further investigation (smaller inputs, `dmesg`, ThreadPool logging) is required.
+- ASAN β/γ runs have not been executed on LLVM 17 yet; wiring the LLVM 3.5.2 runtime into the new toolchain is still in progress.
 
 ## Project Structure
 

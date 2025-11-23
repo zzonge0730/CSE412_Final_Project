@@ -5,7 +5,7 @@
 ## 문서 목록
 
 ### 작업 일지
-- **`2024-11-18_SESSION_LOG.md`** - 2024년 11월 18일 작업 일지
+- **`*SESSION_LOG*.md`** - 작업 일지 모음 (파일명은 날짜 기반)
   - 작업 위치: `Catamaran-llvm-14/llvm/lib/Transforms/CMPass/`
   - 오늘 해결한 모든 문제와 변경 사항 기록
 
@@ -55,7 +55,7 @@
 ## 빠른 참조
 
 ### 오늘의 작업을 확인하려면
-→ `2024-11-18_SESSION_LOG.md`
+→ `*SESSION_LOG*.md`
 
 ### 이식 방법을 알고 싶다면
 → `LLVM14_PORTING_GUIDE.md`

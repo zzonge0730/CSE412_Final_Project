@@ -2,6 +2,7 @@
 #include "llvm/IR/Function.h" // For FunctionCallee
 #include "llvm/IR/DataLayout.h" // For DataLayout
 #include "llvm/ADT/SmallVector.h" // For SmallVector
+#include <algorithm>
 
 DOALLTask::DOALLTask(uint32_t ID, FunctionType * funcType, Module * M) : loopSeed(std::random_device()()) {
     this->ID = ID;
@@ -26,6 +27,10 @@ Value * DOALLTask::getCloneOfOriginalLiveIn (Value * v) const {
 
 void DOALLTask::addLiveIn (Value *original, Value *internal)  {
     this->liveInClones[original] = internal;
+}
+
+bool DOALLTask::hasLiveInVar(Value * liveIn) const {
+    return std::find(this->liveInVars.begin(), this->liveInVars.end(), liveIn) != this->liveInVars.end();
 }
 
 void DOALLTask::removeLiveIn (Instruction *original) {
@@ -235,7 +240,7 @@ void DOALLTask::setLiveInInitVal(std::unordered_map<Value *, Value *> initMap) {
     this->liveInInitValue = initMap;
 }
 
-void DOALLTask::genCtorForSpawn(Module * M, Function * wrapperFunc) {
+void DOALLTask::genCtorForSpawn(Module * M, Function * wrapperFunc, unsigned ctorKey) {
     LLVMContext& ctx = this->M->getContext();
     uint32_t baseArgsForCtorSpawn = 2;
     std::vector<Type *> ctorSig(baseArgsForCtorSpawn);
@@ -263,7 +268,7 @@ void DOALLTask::genCtorForSpawn(Module * M, Function * wrapperFunc) {
             FunctionType * ctorTy = FunctionType::get(Type::getVoidTy(ctx), ctorSig, false);
             // LLVM 14: getOrInsertFunction()는 FunctionCallee를 반환, getCallee()로 Constant* 얻기
             FunctionCallee ctorCallee = this->M->getOrInsertFunction(ctorName, ctorTy);
-            this->ctors[t] = cast<Constant>(ctorCallee.getCallee());
+            this->ctors[ctorKey] = cast<Constant>(ctorCallee.getCallee());
         }
 
         ctorSig.push_back(voidStarTy);
@@ -279,10 +284,12 @@ void DOALLTask::genCtorForSpawn(Module * M, Function * wrapperFunc) {
 
 std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) {
     LLVMContext& ctx = this->M->getContext();
-    Type * voidStarTy = PointerType::get(ctx, 0);
+    PointerType * voidPtrType = PointerType::get(ctx, 0);
+    Type * voidStarTy = voidPtrType;
 
     std::vector<Value *> args{ConstantInt::get(Type::getInt32Ty(ctx), std::uniform_int_distribution<uint32_t>{}(this->loopSeed)), wrapperFunc};
-
+    std::vector<Value *> packedLiveIns;
+    packedLiveIns.reserve(this->liveInVars.size());
     for (auto liveIn : this->liveInVars) {
         // errs() << "592Inst: " << *liveIn << "\n";
         Type * liveInType = liveIn->getType();
@@ -302,19 +309,48 @@ std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) 
         }
         // errs() << "castArgForNew: " << *castArgForNew <<"\n";
         BitCastInst * bcInst = new BitCastInst(castArgForNew, voidStarTy, "yy_", this->whereToInsertFunc);
-        // errs() << "bcInst: " << *bcInst << "\n";
-        args.push_back(bcInst);
-        // errs() << "--631\n";
+        packedLiveIns.push_back(bcInst);
     }
+
+    Value *envPtrValue = ConstantPointerNull::get(voidPtrType);
+    if (!packedLiveIns.empty()) {
+        ArrayType *arrTy = ArrayType::get(voidStarTy, packedLiveIns.size());
+        AllocaInst *envAlloca = new AllocaInst(arrTy, 0, "cm_spawn_env", this->whereToInsertFunc);
+        for (unsigned idx = 0; idx < packedLiveIns.size(); ++idx) {
+            Value *indices[] = {
+                ConstantInt::get(Type::getInt32Ty(ctx), 0),
+                ConstantInt::get(Type::getInt32Ty(ctx), idx)
+            };
+            Value *slotPtr = GetElementPtrInst::Create(arrTy, envAlloca, indices, "cm_spawn_slot", this->whereToInsertFunc);
+            new StoreInst(packedLiveIns[idx], slotPtr, this->whereToInsertFunc);
+        }
+        envPtrValue = new BitCastInst(envAlloca, voidStarTy, "cm_spawn_env_ptr", this->whereToInsertFunc);
+    }
+
+    args.push_back(envPtrValue);
     errs() << "argsize: " << args.size() << "\n";
-    // for (auto arg : args) {
-    //     errs() << "final arg: " << *arg << "\n";
-    // }
-    // for (int i = 0 ; i < args.size(); i++) {
-    //     errs() << "final arg: " << *args[i] << "\n";
-    // }
 
     return args;
+}
+
+namespace {
+void eraseInstructionSafely(Instruction *Inst) {
+    if (Inst == nullptr) return;
+    if (!Inst->use_empty()) {
+        if (!Inst->getType()->isVoidTy()) {
+            Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
+        } else {
+            SmallVector<User *, 4> Users(Inst->user_begin(), Inst->user_end());
+            for (auto *U : Users) {
+                if (Instruction *UserInst = dyn_cast<Instruction>(U)) {
+                    eraseInstructionSafely(UserInst);
+                }
+            }
+        }
+    }
+    Inst->dropAllReferences();
+    Inst->eraseFromParent();
+}
 }
 
 void DOALLTask::eraseSafeCheckCodes() {
@@ -467,16 +503,29 @@ void DOALLTask::eraseSafeCheckCodes() {
         toErased.insert(pair.first);
     }
 
+    std::unordered_set<Instruction*> eraseSet(toErased.begin(), toErased.end());
+
     for (auto inst : toErased) {
             //do not erase these codes in source program
         if (this->notInLoopBody.count(inst) != 0) continue;
+        if (!this->instIsInLoopBody(inst)) continue;
+        if (isa<AllocaInst>(inst)) continue;
         
-        // Fix for LLVM 17 crash: Break all dependencies before erasing
-        if (!inst->getType()->isVoidTy()) {
-            inst->replaceAllUsesWith(UndefValue::get(inst->getType()));
+        bool externalUse = false;
+        for (User *U : inst->users()) {
+            if (auto *UI = dyn_cast<Instruction>(U)) {
+                if (eraseSet.count(UI) == 0) {
+                    externalUse = true;
+                    break;
+                }
+            } else {
+                externalUse = true;
+                break;
+            }
         }
+        if (externalUse) continue;
         
-        inst->eraseFromParent();
+        eraseInstructionSafely(inst);
     }
 
     // errs() << "Final module: \n";
@@ -722,14 +771,14 @@ void DOALLTask::splitLoop() {
             } else {
                 argForNew = liveInForNewLiveIn[liveIn];
             }
-            auto bcInst = new BitCastInst{argForNew, liveIn->getType(), "", this->entryBlock};
+            auto bcInst = CastInst::Create(Instruction::BitCast, argForNew, liveIn->getType());
             loopPreHeader.Insert(bcInst);
             this->liveInClones[liveIn] = bcInst; 
 
         } else if (this->liveInNeedACMem(liveIn)) {// needACMem and load variable init
             Value * argForNew;
             argForNew = liveInForNewLiveIn[liveIn];
-            auto bcInst = new BitCastInst{argForNew, liveIn->getType(), "", this->entryBlock};
+            auto bcInst = CastInst::Create(Instruction::BitCast, argForNew, liveIn->getType());
             loopPreHeader.Insert(bcInst);
             this->liveInClones[liveIn] = bcInst; 
         }
@@ -739,7 +788,7 @@ void DOALLTask::splitLoop() {
     for (auto argIt = newLoopFunc->arg_begin(); argIt != newLoopFunc->arg_end(); ++argIt, ++ix) {
         //alloca memory for those liveInVars which are needed bitcast related
         if (this->liveInNeedACMem(nonLocalLiveIn[ix])) continue;
-        auto bcInst = new BitCastInst{&*argIt, nonLocalLiveIn[ix]->getType(), "", this->entryBlock};
+        auto bcInst = CastInst::Create(Instruction::BitCast, &*argIt, nonLocalLiveIn[ix]->getType());
         loopPreHeader.Insert(bcInst);
         this->liveInClones[nonLocalLiveIn[ix]] = bcInst; 
     }
@@ -757,20 +806,10 @@ void DOALLTask::splitLoop() {
         bbMap[BB] = cloneBB;
         IRBuilder<> builder(cloneBB);
         for (auto& I : *BB) {
-            //not clone branchInst, which is reconstructed by our approach later
             if (isa<BranchInst>(&I)) continue;
-
-            // if (isDoNotParallelCodes(&I) && (!instIsInBrInstRelated(&I))) continue; 
-
-            
-            if ((!instIsInLoopBody(&I)) /*outer most loop latch & header*/ 
-            || (instIsInLoopBody(&I) && (instIsInAllInstsToOneCall(&I) || instIsInBrInstRelated(&I) || phiCornerCase(&I, BB) || succIsPHIBB(BB)))) {
-                auto cloneInst = builder.Insert(I.clone());
-                instAdded.insert(cloneInst);
-                // instMap[&I] = cloneInst;
-                this->instructionClones[&I] = cloneInst;
-            }
-
+            auto cloneInst = builder.Insert(I.clone());
+            instAdded.insert(cloneInst);
+            this->instructionClones[&I] = cloneInst;
         } 
     }
     errs() << "SplitLoop: Finished cloning non-branch instructions\n";
@@ -903,6 +942,17 @@ void DOALLTask::splitLoop() {
 
             if (isOriginalLiveInVar(opV)) {
                 auto internalValue = this->getCloneOfOriginalLiveIn(opV);
+                if (internalValue->getType() != opV->getType()) {
+                    if (internalValue->getType()->isIntegerTy() && opV->getType()->isIntegerTy()) {
+                        unsigned srcBits = internalValue->getType()->getIntegerBitWidth();
+                        unsigned dstBits = opV->getType()->getIntegerBitWidth();
+                        if (srcBits < dstBits) {
+                            internalValue = new ZExtInst(internalValue, opV->getType(), "", cloneI);
+                        } else if (srcBits > dstBits) {
+                            internalValue = new TruncInst(internalValue, opV->getType(), "", cloneI);
+                        }
+                    }
+                }
                 (*opIt).set(internalValue);
                 continue;
             }
@@ -913,6 +963,17 @@ void DOALLTask::splitLoop() {
             if (auto opI = dyn_cast<Instruction>(opV)) {
                 if (isAnOriginalInstruction(opI)) {
                     auto cloneOpI = this->instructionClones[opI];
+                    if (cloneOpI->getType() != opI->getType()) {
+                         if (cloneOpI->getType()->isIntegerTy() && opI->getType()->isIntegerTy()) {
+                            unsigned srcBits = cloneOpI->getType()->getIntegerBitWidth();
+                            unsigned dstBits = opI->getType()->getIntegerBitWidth();
+                            if (srcBits < dstBits) {
+                                cloneOpI = new ZExtInst(cloneOpI, opI->getType(), "", cloneI);
+                            } else if (srcBits > dstBits) {
+                                cloneOpI = new TruncInst(cloneOpI, opI->getType(), "", cloneI);
+                            }
+                        }
+                    }
                     (*opIt).set(cloneOpI);
                 }
             }
@@ -923,12 +984,7 @@ void DOALLTask::splitLoop() {
     // errs() << "SplitLoop is: " << *newLoopFunc << "\n";
 
     //create wrapper function for parallelized loop task function
-    std::vector<Type *> wrapperFuncArgs;
-    wrapperFuncArgs.reserve(numArgs);
-    
-    for (int k = 0; k < numArgs; k++) {
-        wrapperFuncArgs.push_back(voidStarTy);
-    }
+    std::vector<Type *> wrapperFuncArgs(1, voidStarTy);
 
     FunctionType * wrapperFuncType = FunctionType::get(Type::getVoidTy(ctx), wrapperFuncArgs, false);
     std::string wrapperFuncName = "_spawn" + newLoopFuncName;
@@ -938,20 +994,23 @@ void DOALLTask::splitLoop() {
     BasicBlock * wrapperFuncEntryBB = BasicBlock::Create(ctx, "entry", wrapperFunc);
 
     // LLVM 14: getArgumentList() → args()
-    auto wrapperFuncArgIt = wrapperFunc->arg_begin();
-    auto newLoopFuncArgIt = newLoopFunc->arg_begin();
+    auto envArgIt = wrapperFunc->arg_begin();
+    Type * voidPtrPtrTy = PointerType::get(voidStarTy, 0);
+    Value * envBase = new BitCastInst(&*envArgIt, voidPtrPtrTy, "cm_env_base", wrapperFuncEntryBB);
 
     std::vector<Value *> wrapperFuncCastArgs;
-    // LLVM 14: getArgumentList() → args() iterator 사용
-    for (auto newLoopFuncArgIt = newLoopFunc->arg_begin(), wrapperFuncArgIt = wrapperFunc->arg_begin();
-    newLoopFuncArgIt != newLoopFunc->arg_end(); ++newLoopFuncArgIt, ++wrapperFuncArgIt) {
+    unsigned wrapperIdx = 0;
+    for (auto newLoopFuncArgIt = newLoopFunc->arg_begin();
+        newLoopFuncArgIt != newLoopFunc->arg_end(); ++newLoopFuncArgIt, ++wrapperIdx) {
         Type * tmpType = newLoopFuncArgIt->getType();
+        Value * idxVal = ConstantInt::get(Type::getInt32Ty(ctx), wrapperIdx);
+        Value * slotPtr = GetElementPtrInst::Create(voidStarTy, envBase, idxVal, "cm_env_slot", wrapperFuncEntryBB);
+        Value * rawPtr = new LoadInst(voidStarTy, slotPtr, "", wrapperFuncEntryBB);
         if (tmpType->isPointerTy()) {
-            BitCastInst * bc = new BitCastInst(&*wrapperFuncArgIt, tmpType, "", wrapperFuncEntryBB);
+            BitCastInst * bc = new BitCastInst(rawPtr, tmpType, "", wrapperFuncEntryBB);
             wrapperFuncCastArgs.push_back(bc);
         } else {
-            BitCastInst * bc = new BitCastInst(&*wrapperFuncArgIt, PointerType::get(ctx, 0), "", wrapperFuncEntryBB);
-            // LLVM 14: LoadInst 생성자 변경 - 타입 명시 필요
+            BitCastInst * bc = new BitCastInst(rawPtr, PointerType::get(tmpType, 0), "", wrapperFuncEntryBB);
             LoadInst * load = new LoadInst(tmpType, bc, "", wrapperFuncEntryBB);
             wrapperFuncCastArgs.push_back(load);
         }
@@ -962,7 +1021,7 @@ void DOALLTask::splitLoop() {
     ReturnInst::Create(ctx, nullptr, wrapperFuncEntryBB);
 
     //constructor of spawnable function
-    genCtorForSpawn(this->M, wrapperFunc);
+    genCtorForSpawn(this->M, wrapperFunc, numArgs);
   
 
     // errs() << "wrapperFunc: " << *wrapperFunc << "\n";
@@ -971,7 +1030,7 @@ void DOALLTask::splitLoop() {
 
     std::vector<Value *> needArgs = genSpawnArgs(this->M, wrapperFunc);
     errs() << "needArgSize: " << needArgs.size() << "\n";
-    if (needArgs.size() != numArgs + 2) {
+    if (needArgs.size() != 3) {
         errs() << ">>>Num of NeedArgs is wrong...\n";
     }
 

@@ -1,4 +1,4 @@
-# 2024-11-18 작업 요약
+# 작업 요약
 
 ## 완료된 작업
 
@@ -49,7 +49,7 @@
 - `LLVM_VERSION_UPGRADE_ANALYSIS.md` - 버전 비교 분석
 - `LLVM17_UPGRADE_DECISION.md` - 업그레이드 결정 문서
 - `DOCKER_LLVM17_SETUP.md` - Docker 설정 가이드
-- `2024-11-18_SESSION_LOG.md` - 작업 일지 (업데이트됨)
+- `docs/llvm14/*SESSION_LOG*.md` - 작업 일지 (업데이트됨)
 
 ## 다음 세션 시작 지점
 
@@ -95,8 +95,7 @@
 - `opt -load-pass-plugin=libCMPass.so -passes="Loops"` 형태로 실행
 
 ## 작업 시간
-- 시작: 2024-11-18
-- 종료: 2024-11-18
+- 시작/종료: 세션 로그 참고
 - 주요 작업: 문제 분석 → 업그레이드 결정 → Docker 환경 구축
 
 ## 다음 세션 체크리스트

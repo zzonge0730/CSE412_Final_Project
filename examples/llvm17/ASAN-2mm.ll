@@ -1,5 +1,5 @@
-; ModuleID = '../examples/2mm.c'
-source_filename = "../examples/2mm.c"
+; ModuleID = '../../examples/2mm.c'
+source_filename = "../../examples/2mm.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
@@ -11,7 +11,7 @@ $.str.21576b91ab9b15712202e1b4a494877f = comdat any
 
 @stderr = external local_unnamed_addr global ptr, align 8
 @.str = internal constant { [8 x i8], [24 x i8] } { [8 x i8] c"%0.2lf \00", [24 x i8] zeroinitializer }, comdat($.str.21576b91ab9b15712202e1b4a494877f), align 32
-@___asan_gen_ = private constant [18 x i8] c"../examples/2mm.c\00", align 1
+@___asan_gen_ = private constant [21 x i8] c"../../examples/2mm.c\00", align 1
 @___asan_gen_.2 = private unnamed_addr constant [5 x i8] c".str\00", align 1
 @__asan_global_.str = private global { i64, i64, i64, i64, i64, i64, i64, i64 } { i64 ptrtoint (ptr @0 to i64), i64 8, i64 32, i64 ptrtoint (ptr @___asan_gen_.2 to i64), i64 ptrtoint (ptr @___asan_gen_ to i64), i64 0, i64 0, i64 -1 }, section "asan_globals", comdat($.str.21576b91ab9b15712202e1b4a494877f), !associated !0
 @llvm.compiler.used = appending global [2 x ptr] [ptr @.str, ptr @__asan_global_.str], section "llvm.metadata"

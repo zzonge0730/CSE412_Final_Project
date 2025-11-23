@@ -61,9 +61,6 @@ ScalarEvolution SE(*function, TLI, AC, DT, LI);
 - ✅ `LoopAnalysis` 관련 에러 해결됨
 - ⚠️ 새로운 에러: `PDG::copyEdgesInto()` (다음 단계에서 해결 필요)
 
-## 날짜
-2024-11-22
-
 ## 참고
 - 이 변경으로 `FunctionAnalysisManager`를 통한 분석 등록 대신 직접 생성 방식을 사용
 - 성능 최적화보다는 동작 확실성에 중점을 둔 해결책

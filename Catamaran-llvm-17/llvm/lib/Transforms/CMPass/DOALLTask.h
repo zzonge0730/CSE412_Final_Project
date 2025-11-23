@@ -80,6 +80,7 @@ public:
     void setLoopHeader(BasicBlock * loopH);
     void setWhereToInsertFunc(Instruction * inst);
     void addLiveInVar(Value * liveIn);
+    bool hasLiveInVar(Value * liveIn) const;
     void setSafeCheckInstsNoInLoopBody(std::unordered_set<Instruction *> checkInsts);
     void setSafeCheckInstsInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> safecodes);
     void setAllInstsToOneCallInstInLoopBody(std::unordered_map<Instruction *, std::set<Instruction *>> allinsts);    
@@ -140,7 +141,7 @@ private:
     std::unordered_map<Value *, Value *> liveInInitValue;
     LLVMContext& getTaskLLVMContext(void) const;
 
-    void genCtorForSpawn(Module * M, Function * wrapperFunc);
+    void genCtorForSpawn(Module * M, Function * wrapperFunc, unsigned ctorKey);
     std::vector<Value *> genSpawnArgs(Module * M, Function * wrapperFunc);
 
     std::mt19937 loopSeed;
