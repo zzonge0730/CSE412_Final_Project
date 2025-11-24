@@ -314,17 +314,24 @@ std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) 
 
     Value *envPtrValue = ConstantPointerNull::get(voidPtrType);
     if (!packedLiveIns.empty()) {
-        ArrayType *arrTy = ArrayType::get(voidStarTy, packedLiveIns.size());
-        AllocaInst *envAlloca = new AllocaInst(arrTy, 0, "cm_spawn_env", this->whereToInsertFunc);
+        // Use malloc instead of alloca to prevent use-after-return in async tasks
+        Type *sizeT = Type::getInt64Ty(ctx);
+        FunctionCallee mallocFunc = this->M->getOrInsertFunction("malloc", 
+            FunctionType::get(PointerType::get(ctx, 0), {sizeT}, false));
+
+        uint64_t totalBytes = packedLiveIns.size() * 8; // Assuming 64-bit pointers
+        Value *sizeVal = ConstantInt::get(sizeT, totalBytes);
+
+        // Call malloc
+        CallInst *envMalloc = CallInst::Create(mallocFunc, {sizeVal}, "cm_spawn_env_malloc", this->whereToInsertFunc);
+
         for (unsigned idx = 0; idx < packedLiveIns.size(); ++idx) {
-            Value *indices[] = {
-                ConstantInt::get(Type::getInt32Ty(ctx), 0),
-                ConstantInt::get(Type::getInt32Ty(ctx), idx)
-            };
-            Value *slotPtr = GetElementPtrInst::Create(arrTy, envAlloca, indices, "cm_spawn_slot", this->whereToInsertFunc);
+            Value *idxVal = ConstantInt::get(Type::getInt32Ty(ctx), idx);
+            // GEP needs element type (voidStarTy is i8* or opaque)
+            Value *slotPtr = GetElementPtrInst::Create(voidStarTy, envMalloc, idxVal, "cm_spawn_slot", this->whereToInsertFunc);
             new StoreInst(packedLiveIns[idx], slotPtr, this->whereToInsertFunc);
         }
-        envPtrValue = new BitCastInst(envAlloca, voidStarTy, "cm_spawn_env_ptr", this->whereToInsertFunc);
+        envPtrValue = envMalloc;
     }
 
     args.push_back(envPtrValue);

@@ -368,18 +368,24 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
     Value *envPtrValue = ConstantPointerNull::get(voidPtrType);
     Instruction *insertBefore = checksGroup.empty() ? wrapperFunc->getEntryBlock().getTerminator() : checksGroup.front();
     if (!packedArgs.empty()) {
-        ArrayType *arrTy = ArrayType::get(voidStarTy, packedArgs.size());
+        // Use malloc instead of alloca to prevent use-after-return in asynchronous tasks
+        Type *sizeT = Type::getInt64Ty(ctx);
+        FunctionCallee mallocFunc = this->M->getOrInsertFunction("malloc", 
+            FunctionType::get(PointerType::get(ctx, 0), {sizeT}, false));
+        
+        uint64_t totalBytes = packedArgs.size() * 8; // Assuming 64-bit pointers
+        Value *sizeVal = ConstantInt::get(sizeT, totalBytes);
+        
         IRBuilder<> envBuilder(insertBefore);
-        AllocaInst *envAlloca = envBuilder.CreateAlloca(arrTy, nullptr, "lf_spawn_env");
+        CallInst *envMalloc = envBuilder.CreateCall(mallocFunc, {sizeVal}, "lf_spawn_env_malloc");
+        
         for (unsigned idx = 0; idx < packedArgs.size(); ++idx) {
-            Value *idxVals[] = {
-                ConstantInt::get(Type::getInt32Ty(ctx), 0),
-                ConstantInt::get(Type::getInt32Ty(ctx), idx)
-            };
-            Value *slotPtr = envBuilder.CreateInBoundsGEP(arrTy, envAlloca, idxVals, "lf_spawn_slot");
+            Value *idxVal = ConstantInt::get(Type::getInt32Ty(ctx), idx);
+            // GEP needs element type for offset calculation
+            Value *slotPtr = envBuilder.CreateInBoundsGEP(voidStarTy, envMalloc, idxVal, "lf_spawn_slot");
             envBuilder.CreateStore(packedArgs[idx], slotPtr);
         }
-        envPtrValue = envBuilder.CreateBitCast(envAlloca, voidStarTy, "lf_spawn_env_ptr");
+        envPtrValue = envMalloc;
     }
 
     args.push_back(envPtrValue);
