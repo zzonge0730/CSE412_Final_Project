@@ -1328,16 +1328,20 @@ std::vector<LoopStructure *> * Loops::getLoopStructures(ModuleAnalysisManager &A
     FunctionAnalysisManager &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(*this->program).getManager();
     auto allLoops = new std::vector<LoopStructure *> ();
 
-    auto mainFunction = this->getEntryFunction();
-    assert(mainFunction != nullptr);
-    auto functions = this->getModuleFunctionsReachableFrom(this->program, mainFunction, AM);
+    // Instead of filtering reachable functions, iterate over all functions in the module.
+    // This ensures we don't miss functions due to broken call graphs or indirect calls
+    // introduced by MoveC instrumentation.
+    std::vector<Function *> functions;
+    for (auto &F : *this->program) {
+        functions.push_back(&F);
+    }
 
     //check if we should filter out loops
 
     //append loops of each function
     auto nextLoopIndex = 0;
-    errs() << "DEBUG: Reached functions count: " << functions->size() << "\n";
-    for (auto func : *functions) {
+    errs() << "DEBUG: Total functions count: " << functions.size() << "\n";
+    for (auto func : functions) {
         errs() << "DEBUG: Checking function for loops: " << func->getName() << "\n";
         if (func->empty()) continue;
         if (func->isDeclaration()) continue;
@@ -1367,7 +1371,7 @@ std::vector<LoopStructure *> * Loops::getLoopStructures(ModuleAnalysisManager &A
 
         }
     }
-    delete functions;
+    // delete functions; // functions is now a vector, not a pointer
     return allLoops;
 }
 std::vector<LoopStructure *> * Loops::getLoopStructures(Function * func, FunctionAnalysisManager &FAM) {
