@@ -58,6 +58,7 @@ RUN mkdir -p /opt/llvm-17/build \
         -DCMAKE_C_COMPILER=gcc-12 \
         -DCMAKE_CXX_COMPILER=g++-12 \
         -DLLVM_ENABLE_PROJECTS="clang;lld" \
+        -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
         -DLLVM_TARGETS_TO_BUILD="X86" \
         -DLLVM_ENABLE_ASSERTIONS=ON \
         -DLLVM_ENABLE_RTTI=ON \
@@ -66,7 +67,6 @@ RUN mkdir -p /opt/llvm-17/build \
         /opt/llvm-17/llvm \
     && ninja -j "$(nproc)" \
     && ninja install
-
 # Install MoveC in builder stage
 RUN git clone --depth=1 https://github.com/drzchen/movec.git /opt/movec
 

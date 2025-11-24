@@ -95,13 +95,12 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
 
     StayConnectedNestedLoopForest *forest = nullptr;
     std::vector<DOALLTask *> loopTasks;
+    //generate the nesting forest
+    forest = this->organizeLoopsInTheirNestingForest(*loopStructures, AM);
+    delete loopStructures;
+
     if (moduleHasASANChecks) {
-        errs() << "DEBUG: ASAN instrumentation detected - skipping DOALL transformation\n";
-        delete loopStructures;
-    } else {
-        //generate the nesting forest
-        forest = this->organizeLoopsInTheirNestingForest(*loopStructures, AM);
-        delete loopStructures;
+        errs() << "DEBUG: ASAN instrumentation detected - DOALL enabled (safe check erasure still disabled)\n";
     }
 
     if (!forest) {
@@ -970,6 +969,11 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
     for (Function& F : *this->program) {
         errs() << "DEBUG: Considering Function: " << F.getName() << "\n";
         if (F.isDeclaration() || F.isIntrinsic() || F.empty()) continue;
+        auto funcNameLF = F.getName();
+        if (funcNameLF.startswith("asan.") || funcNameLF.startswith("__asan_")) {
+            errs() << "DEBUG: Skipping LoopFree for ASAN helper\n";
+            continue;
+        }
         if (softboundcetsLibFunction.count(F.getName().str())) continue;
         //get the functionPDG
         #if ZYYDEBUG
@@ -1345,6 +1349,11 @@ std::vector<LoopStructure *> * Loops::getLoopStructures(ModuleAnalysisManager &A
         errs() << "DEBUG: Checking function for loops: " << func->getName() << "\n";
         if (func->empty()) continue;
         if (func->isDeclaration()) continue;
+        auto funcName = func->getName();
+        if (funcName.startswith("asan.") || funcName.startswith("__asan_")) {
+            errs() << "DEBUG: Skipping ASAN helper function\n";
+            continue;
+        }
 
         // LLVM 14: FunctionAnalysisManager를 통해 LoopInfo 얻기
         auto& LI = FAM.getResult<LoopAnalysis>(*func);

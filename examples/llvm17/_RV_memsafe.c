@@ -2174,7 +2174,6 @@ void *__RV_check_dpv(const __RV_pmd *pmd,
 
 /*Check deferences of pointer variables using subscripts, e.g., ptr[subscript].*/
  inline
-__attribute__((noinline))
 long __RV_check_dpv_ss(const __RV_pmd *pmd,
         const void *ptr, long subscript, size_t size,
         const char *file_name, const char *func_name,

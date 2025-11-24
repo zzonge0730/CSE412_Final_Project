@@ -1002,8 +1002,9 @@ void DOALLTask::splitLoop() {
 
     // LLVM 14: getArgumentList() → args()
     auto envArgIt = wrapperFunc->arg_begin();
+    Value * envArg = &*envArgIt;
     Type * voidPtrPtrTy = PointerType::get(voidStarTy, 0);
-    Value * envBase = new BitCastInst(&*envArgIt, voidPtrPtrTy, "cm_env_base", wrapperFuncEntryBB);
+    Value * envBase = new BitCastInst(envArg, voidPtrPtrTy, "cm_env_base", wrapperFuncEntryBB);
 
     std::vector<Value *> wrapperFuncCastArgs;
     unsigned wrapperIdx = 0;
@@ -1025,6 +1026,10 @@ void DOALLTask::splitLoop() {
 
     // add call newLoopFunc
     CallInst * callNewLoopFuncInst = CallInst::Create(newLoopFunc, wrapperFuncCastArgs, "", wrapperFuncEntryBB);
+    FunctionCallee freeFunc = this->M->getOrInsertFunction(
+        "free",
+        FunctionType::get(Type::getVoidTy(ctx), {voidStarTy}, false));
+    CallInst::Create(freeFunc, {envArg}, "", wrapperFuncEntryBB);
     ReturnInst::Create(ctx, nullptr, wrapperFuncEntryBB);
 
     //constructor of spawnable function

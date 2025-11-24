@@ -217,7 +217,8 @@ void LoopFreeTask::SafeCheckTobeMerged() {
     BasicBlock * entryBB = BasicBlock::Create(ctx, "entry", wrapperFunc);
 
     auto envArgIt = wrapperFunc->arg_begin();
-    Value * envBase = new BitCastInst(&*envArgIt, voidPtrPtrTy, "lf_env_base", entryBB);
+    Value * envArg = &*envArgIt;
+    Value * envBase = new BitCastInst(envArg, voidPtrPtrTy, "lf_env_base", entryBB);
     unsigned envIndex = 0;
 
     for (int idx = 0; idx < checkFuncVec.size(); idx++) {
@@ -253,6 +254,11 @@ void LoopFreeTask::SafeCheckTobeMerged() {
         CallInst * callInst = CallInst::Create(funcCallee, groupedCastArgs, "", entryBB);
 
     }
+
+    FunctionCallee freeFunc = this->M->getOrInsertFunction(
+        "free",
+        FunctionType::get(Type::getVoidTy(ctx), {voidStarTy}, false));
+    CallInst::Create(freeFunc, {envArg}, "", entryBB);
 
     ReturnInst::Create(ctx, nullptr, entryBB);
     genCtorForSpawn(wrapperFunc, totalNumArgs);
@@ -367,6 +373,8 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
 
     Value *envPtrValue = ConstantPointerNull::get(voidPtrType);
     Instruction *insertBefore = checksGroup.empty() ? wrapperFunc->getEntryBlock().getTerminator() : checksGroup.front();
+    Instruction *envInsert = insertBefore;
+
     if (!packedArgs.empty()) {
         // Use malloc instead of alloca to prevent use-after-return in asynchronous tasks
         Type *sizeT = Type::getInt64Ty(ctx);
@@ -376,15 +384,27 @@ std::vector<Value *> LoopFreeTask::genSpawnArgs(std::vector<Instruction *> check
         uint64_t totalBytes = packedArgs.size() * 8; // Assuming 64-bit pointers
         Value *sizeVal = ConstantInt::get(sizeT, totalBytes);
         
-        IRBuilder<> envBuilder(insertBefore);
+        IRBuilder<> envBuilder(envInsert);
         CallInst *envMalloc = envBuilder.CreateCall(mallocFunc, {sizeVal}, "lf_spawn_env_malloc");
-        
+
         for (unsigned idx = 0; idx < packedArgs.size(); ++idx) {
+            Value *packed = packedArgs[idx];
             Value *idxVal = ConstantInt::get(Type::getInt32Ty(ctx), idx);
-            // GEP needs element type for offset calculation
-            Value *slotPtr = envBuilder.CreateInBoundsGEP(voidStarTy, envMalloc, idxVal, "lf_spawn_slot");
-            envBuilder.CreateStore(packedArgs[idx], slotPtr);
+            Instruction *storeInsert = insertBefore;
+            if (auto *packedInst = dyn_cast<Instruction>(packed)) {
+                if (!packedInst->comesBefore(insertBefore)) {
+                    storeInsert = packedInst->getNextNode();
+                    if (!storeInsert) {
+                        storeInsert = insertBefore;
+                    }
+                }
+            }
+
+            IRBuilder<> storeBuilder(storeInsert);
+            Value *slotPtr = storeBuilder.CreateInBoundsGEP(voidStarTy, envMalloc, idxVal, "lf_spawn_slot");
+            storeBuilder.CreateStore(packed, slotPtr);
         }
+
         envPtrValue = envMalloc;
     }
 
