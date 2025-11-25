@@ -398,15 +398,19 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                 std::unordered_map<Instruction *, std::set<Instruction *>> safeCheckInstsInLoopBody;
                 std::unordered_map<Instruction *, std::set<Instruction *>> allInstsToOneCallInstInLoopBody;
                 std::unordered_set<BasicBlock *> loopBody = ls->getLoopBody();
-                //need orderedBasicBlocks
-                // std::unordered_map<BasicBlock *, std::vector<BasicBlock *>> loopBodyBasicBlock;
-                
+                std::unordered_set<BasicBlock *> loopBlocks = ls->getBasicBlocks();
+
                 std::unordered_set<Instruction *> customedFunRelatedCodeInLoop;
+                std::unordered_set<Instruction *> dedupSafeChecks;
                 bool relatedFlag = false;
-                for (auto BB : ls->orderedBBs) {
-                    for (auto& I : *BB) {
+
+                // Iterate over the actual loop blocks (including nested loop blocks) so that
+                // MoveC safe checks inside inner loops are not skipped when orderedBBs is
+                // incomplete or reordered.
+                for (auto *BB : loopBlocks) {
+                    for (auto &I : *BB) {
                         if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-                            Function * calledFunc = CI->getCalledFunction();
+                            Function *calledFunc = CI->getCalledFunction();
                             if (calledFunc == nullptr) continue; // !! could return null if the call is an indirect call through a function pointer
                             StringRef callName = calledFunc->getName();
                             errs() << "DEBUG: Checking call in loop: " << callName << "\n"; errs().flush();
@@ -416,8 +420,12 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                                 isMovec = true;
                             }
                             bool isAsan = IsSafeCheckCall(CI);
-                            errs() << "DEBUG: IsSafeCheckCallForMovec returned " << isMovec << ", IsSafeCheckCall returned " << isAsan << " for " << callName << "\n"; errs().flush(); 
-                            if (isMovec || isAsan) { safecheckCallInst.push_back(&I); }
+                            errs() << "DEBUG: IsSafeCheckCallForMovec returned " << isMovec << ", IsSafeCheckCall returned " << isAsan << " for " << callName << "\n"; errs().flush();
+                            if (isMovec || isAsan) {
+                                if (dedupSafeChecks.insert(&I).second) {
+                                    safecheckCallInst.push_back(&I);
+                                }
+                            }
                             #if SafeC
                             if (callName.startswith("_safeC_shadow_stack_store_bound")) {
                                 relatedFlag = true;

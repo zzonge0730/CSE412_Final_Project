@@ -4,8 +4,27 @@
 
 set -e
 
-IR_FILE="${1:-examples/llvm17/MoveC-2mm.ll}"
+DEFAULT_IR_FILES=(
+  "examples/llvm17/MoveC-2mm_dis.ll"
+  "examples/llvm17/MoveC-2mm.ll"
+)
+
+IR_FILE="${1:-${DEFAULT_IR_FILES[0]}}"
 FUNC_NAME="${2:-kernel_2mm}"
+
+if [ ! -f "$IR_FILE" ]; then
+  for candidate in "${DEFAULT_IR_FILES[@]}"; do
+    if [ -f "$candidate" ]; then
+      IR_FILE="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ ! -f "$IR_FILE" ]; then
+  echo "❌ IR 파일을 찾을 수 없습니다. 첫 번째 인자로 IR 파일 경로를 전달하세요." >&2
+  exit 1
+fi
 
 echo "=========================================="
 echo "Safe Check 진단 스크립트"

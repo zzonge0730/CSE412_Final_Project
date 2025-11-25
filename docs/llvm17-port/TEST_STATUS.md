@@ -73,29 +73,19 @@ time ./CM-ASAN-2mm 1000 1000 1000 1000 0
 
 ## ⚠️ 부분 작동 / 수정 중인 테스트
 
-### 3. MoveC-2mm.ll - 루프 내부 Safe Check 검출 문제
+### 3. MoveC-2mm (루프 내부 Safe Check 검출 ✅ 해결)
 
-**테스트 파일**: `examples/llvm17/MoveC-2mm.ll`
+**테스트 파일**: `examples/llvm17/MoveC-2mm_dis.ll` (기본), 필요 시 `examples/llvm17/MoveC-2mm.ll`
 
 **현재 상태**:
 - ✅ **컴파일**: 성공
 - ✅ **opt 실행**: 성공 (크래시 해결됨)
 - ✅ **루프 처리**: kernel_2mm 함수의 루프들이 정상 처리됨
-- ❌ **Safe Check 검출**: 루프 내부에 `__RV_check_dpv_ss` 호출이 검출되지 않음
+- ✅ **Safe Check 검출**: `__RV_check_dpv_ss`가 루프 내부에서도 탐지됨 (loop body를 전체 BasicBlock 집합으로 스캔)
 
-**문제**:
-- `.bc` 파일에는 31개의 `__RV_check_dpv_ss` 호출이 존재
-- 하지만 `kernel_2mm` 함수 내부의 루프에는 safe check가 없음
-
-**가능한 원인**:
-1. MoveC instrumentation이 루프 외부에만 있음
-2. LLVM 17의 최적화로 인해 루프 내부의 safe check가 제거됨
-3. Loop body 인식 문제 (LLVM 3.4와 다른 방식)
-
-**해결 진행 중**:
-- 진단 스크립트 작성: `scripts/diagnose_safe_checks.sh`
-- 분석 문서 작성: `docs/llvm17-port/SAFE_CHECK_DETECTION_ANALYSIS.md`
-- LLVM 3.4와 비교 분석 진행 중
+**변경 사항**:
+- 루프 safe check 스캔을 `orderedBBs` 대신 `getBasicBlocks()` 기반으로 수행해 중첩 루프 내부의 MoveC 체크를 놓치지 않도록 수정함.
+- `scripts/diagnose_safe_checks.sh` 기본 대상 IR을 존재하는 `MoveC-2mm_dis.ll`로 전환하고, 파일이 없을 때 친절한 메시지를 출력함.
 
 ## 테스트 파일 목록
 
@@ -113,10 +103,9 @@ time ./CM-ASAN-2mm 1000 1000 1000 1000 0
 
 ### ⚠️ 수정 중인 테스트 파일
 
-3. **MoveC-2mm.ll**
-   - 상태: ⚠️ 부분 작동 (루프 내부 safe check 검출 문제)
-   - 문제: 루프 내부의 safe check가 검출되지 않음
-   - 진행: 진단 및 해결 중
+3. **MoveC-2mm_dis.ll**
+   - 상태: ✅ 루프 내부 safe check 검출 확인 (기본 대상)
+   - 비고: 추가 커널/입력 확장 및 회귀 테스트 스크립트는 후속 작업으로 남겨둠
 
 ### 기타 테스트 파일
 
@@ -125,6 +114,9 @@ time ./CM-ASAN-2mm 1000 1000 1000 1000 0
 6. **ASAN-2mm.ll** - ASAN 계측된 2mm
 
 ## 빠른 테스트 실행
+
+> **주의: 수동 실행 필요**  \
+> 현재 저장소에는 LLVM 17 도구체인(`/opt/llvm-17/bin/opt`)이 없어서 자동 테스트를 돌릴 수 없습니다. 아래 명령들은 **llvm17 Docker 컨테이너 안**에서 직접 실행해야 합니다.
 
 ### 작동하는 테스트만 빠르게 확인
 
@@ -149,6 +141,9 @@ ninja CMPass
   -passes='Loops' \
   -disable-output \
   ../../examples/llvm17/test_llvm17_asan.ll 2>&1 | grep -i "task\|spawn"
+
+# 5. MoveC/ASAN 스모크 테스트(빌드+opt 한 번에)
+./scripts/smoke-test-llvm17.sh
 ```
 
 ## 현재 개발 상태
