@@ -4,7 +4,7 @@
 
 ### ✅ Spatial Safety 포팅 완료 (v1.0-spatial-safety-complete)
 
-**날짜**: 2024년 11월
+**날짜**: 2025년 11월
 **태그**: `v1.0-spatial-safety-complete`
 
 ## 해결한 문제
