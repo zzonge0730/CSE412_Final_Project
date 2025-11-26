@@ -34,7 +34,7 @@ entry:
   %lf_spawn_env_malloc131 = call ptr @malloc(i64 8)
   %lf_spawn_slot132 = getelementptr inbounds ptr, ptr %lf_spawn_env_malloc131, i32 0
   store ptr %zybc_130, ptr %lf_spawn_slot132, align 8
-  call void @_Z5spawnjPFvPvES_(i32 1148070496, ptr @_spawn_loop_free_func_2_0, ptr %lf_spawn_env_malloc131)
+  call void @_Z5spawnjPFvPvES_(i32 -547341230, ptr @_spawn_loop_free_func_2_0, ptr %lf_spawn_env_malloc131)
   call void @__asan_load8(i64 %0)
   %1 = load ptr, ptr %arrayidx, align 8, !tbaa !6
   %call.i = tail call i64 @strtol(ptr nocapture noundef nonnull %1, ptr noundef null, i32 noundef 10) #8
@@ -55,7 +55,7 @@ entry:
   store ptr %zybc_123, ptr %lf_spawn_slot127, align 8
   %lf_spawn_slot128 = getelementptr inbounds ptr, ptr %lf_spawn_env_malloc126, i32 1
   store ptr %zybc_125, ptr %lf_spawn_slot128, align 8
-  call void @_Z5spawnjPFvPvES_(i32 -2052848140, ptr @_spawn_loop_free_func_1_0, ptr %lf_spawn_env_malloc126)
+  call void @_Z5spawnjPFvPvES_(i32 -1752095921, ptr @_spawn_loop_free_func_1_0, ptr %lf_spawn_env_malloc126)
   call void @__asan_load8(i64 %4)
   %5 = load ptr, ptr %arrayidx3, align 8, !tbaa !6
   %call.i80 = tail call i64 @strtol(ptr nocapture noundef nonnull %5, ptr noundef null, i32 noundef 10) #8
@@ -77,7 +77,7 @@ entry:
   store ptr %zybc_, ptr %lf_spawn_slot, align 8
   %lf_spawn_slot121 = getelementptr inbounds ptr, ptr %lf_spawn_env_malloc, i32 1
   store ptr %zybc_120, ptr %lf_spawn_slot121, align 8
-  call void @_Z5spawnjPFvPvES_(i32 -438200778, ptr @_spawn_loop_free_func_0_0, ptr %lf_spawn_env_malloc)
+  call void @_Z5spawnjPFvPvES_(i32 -1359809123, ptr @_spawn_loop_free_func_0_0, ptr %lf_spawn_env_malloc)
   call void @__asan_load8(i64 %8)
   %9 = load ptr, ptr %arrayidx7, align 8, !tbaa !6
   %call.i84 = tail call i64 @strtol(ptr nocapture noundef nonnull %9, ptr noundef null, i32 noundef 10) #8
@@ -112,36 +112,36 @@ for.cond1.preheader.lr.ph.i:                      ; preds = %entry
   %conv5.i = sitofp i32 %conv.i79 to double
   %wide.trip.count148.i = and i64 %call.i78, 4294967295
   %wide.trip.count.i = and i64 %call.i82, 4294967295
-  %ya_12 = alloca i64, align 8
-  store i64 %wide.trip.count148.i, ptr %ya_12, align 8
-  %yy_13 = bitcast ptr %ya_12 to ptr
-  %ya_14 = alloca double, align 8
-  store double %conv5.i, ptr %ya_14, align 8
-  %yy_15 = bitcast ptr %ya_14 to ptr
-  %ya_16 = alloca i64, align 8
-  store i64 %wide.trip.count.i, ptr %ya_16, align 8
-  %yy_17 = bitcast ptr %ya_16 to ptr
-  %ya_18 = alloca i64, align 8
-  store i64 %10, ptr %ya_18, align 8
-  %yy_19 = bitcast ptr %ya_18 to ptr
-  %yy_20 = bitcast ptr %call14 to ptr
-  %ya_21 = alloca i1, align 1
-  store i1 %cmp2128.i, ptr %ya_21, align 1
-  %yy_22 = bitcast ptr %ya_21 to ptr
-  %cm_spawn_env_malloc23 = call ptr @malloc(i64 48)
-  %cm_spawn_slot24 = getelementptr ptr, ptr %cm_spawn_env_malloc23, i32 0
-  store ptr %yy_13, ptr %cm_spawn_slot24, align 8
-  %cm_spawn_slot25 = getelementptr ptr, ptr %cm_spawn_env_malloc23, i32 1
-  store ptr %yy_15, ptr %cm_spawn_slot25, align 8
-  %cm_spawn_slot26 = getelementptr ptr, ptr %cm_spawn_env_malloc23, i32 2
-  store ptr %yy_17, ptr %cm_spawn_slot26, align 8
-  %cm_spawn_slot27 = getelementptr ptr, ptr %cm_spawn_env_malloc23, i32 3
-  store ptr %yy_19, ptr %cm_spawn_slot27, align 8
-  %cm_spawn_slot28 = getelementptr ptr, ptr %cm_spawn_env_malloc23, i32 4
-  store ptr %yy_20, ptr %cm_spawn_slot28, align 8
-  %cm_spawn_slot29 = getelementptr ptr, ptr %cm_spawn_env_malloc23, i32 5
-  store ptr %yy_22, ptr %cm_spawn_slot29, align 8
-  call void @_Z5spawnjPFvPvES_(i32 -543910199, ptr @_spawn_loop_func_19, ptr %cm_spawn_env_malloc23)
+  %ya_79 = alloca i64, align 8
+  store i64 %wide.trip.count148.i, ptr %ya_79, align 8
+  %yy_80 = bitcast ptr %ya_79 to ptr
+  %ya_81 = alloca double, align 8
+  store double %conv5.i, ptr %ya_81, align 8
+  %yy_82 = bitcast ptr %ya_81 to ptr
+  %ya_83 = alloca i64, align 8
+  store i64 %wide.trip.count.i, ptr %ya_83, align 8
+  %yy_84 = bitcast ptr %ya_83 to ptr
+  %ya_85 = alloca i64, align 8
+  store i64 %10, ptr %ya_85, align 8
+  %yy_86 = bitcast ptr %ya_85 to ptr
+  %yy_87 = bitcast ptr %call14 to ptr
+  %ya_88 = alloca i1, align 1
+  store i1 %cmp2128.i, ptr %ya_88, align 1
+  %yy_89 = bitcast ptr %ya_88 to ptr
+  %cm_spawn_env_malloc90 = call ptr @malloc(i64 48)
+  %cm_spawn_slot91 = getelementptr ptr, ptr %cm_spawn_env_malloc90, i32 0
+  store ptr %yy_80, ptr %cm_spawn_slot91, align 8
+  %cm_spawn_slot92 = getelementptr ptr, ptr %cm_spawn_env_malloc90, i32 1
+  store ptr %yy_82, ptr %cm_spawn_slot92, align 8
+  %cm_spawn_slot93 = getelementptr ptr, ptr %cm_spawn_env_malloc90, i32 2
+  store ptr %yy_84, ptr %cm_spawn_slot93, align 8
+  %cm_spawn_slot94 = getelementptr ptr, ptr %cm_spawn_env_malloc90, i32 3
+  store ptr %yy_86, ptr %cm_spawn_slot94, align 8
+  %cm_spawn_slot95 = getelementptr ptr, ptr %cm_spawn_env_malloc90, i32 4
+  store ptr %yy_87, ptr %cm_spawn_slot95, align 8
+  %cm_spawn_slot96 = getelementptr ptr, ptr %cm_spawn_env_malloc90, i32 5
+  store ptr %yy_89, ptr %cm_spawn_slot96, align 8
+  call void @_Z5spawnjPFvPvES_(i32 1055325313, ptr @_spawn_loop_func_34, ptr %cm_spawn_env_malloc90)
   br label %for.cond1.preheader.i
 
 for.cond1.preheader.i:                            ; preds = %for.inc8.i, %for.cond1.preheader.lr.ph.i
@@ -163,31 +163,31 @@ for.cond15.preheader.lr.ph.i:                     ; preds = %for.cond11.preheade
   %cmp16132.i = icmp sgt i32 %conv.i81, 0
   %conv22.i = sitofp i32 %conv.i81 to double
   %wide.trip.count158.i = and i64 %call.i82, 4294967295
-  %ya_60 = alloca i64, align 8
-  store i64 %wide.trip.count158.i, ptr %ya_60, align 8
-  %yy_61 = bitcast ptr %ya_60 to ptr
-  %ya_62 = alloca double, align 8
-  store double %conv22.i, ptr %ya_62, align 8
-  %yy_63 = bitcast ptr %ya_62 to ptr
-  %ya_64 = alloca i64, align 8
-  store i64 %11, ptr %ya_64, align 8
-  %yy_65 = bitcast ptr %ya_64 to ptr
-  %yy_66 = bitcast ptr %call18 to ptr
-  %ya_67 = alloca i1, align 1
-  store i1 %cmp16132.i, ptr %ya_67, align 1
-  %yy_68 = bitcast ptr %ya_67 to ptr
-  %cm_spawn_env_malloc69 = call ptr @malloc(i64 40)
-  %cm_spawn_slot70 = getelementptr ptr, ptr %cm_spawn_env_malloc69, i32 0
-  store ptr %yy_61, ptr %cm_spawn_slot70, align 8
-  %cm_spawn_slot71 = getelementptr ptr, ptr %cm_spawn_env_malloc69, i32 1
-  store ptr %yy_63, ptr %cm_spawn_slot71, align 8
-  %cm_spawn_slot72 = getelementptr ptr, ptr %cm_spawn_env_malloc69, i32 2
-  store ptr %yy_65, ptr %cm_spawn_slot72, align 8
-  %cm_spawn_slot73 = getelementptr ptr, ptr %cm_spawn_env_malloc69, i32 3
-  store ptr %yy_66, ptr %cm_spawn_slot73, align 8
-  %cm_spawn_slot74 = getelementptr ptr, ptr %cm_spawn_env_malloc69, i32 4
-  store ptr %yy_68, ptr %cm_spawn_slot74, align 8
-  call void @_Z5spawnjPFvPvES_(i32 862926476, ptr @_spawn_loop_func_28, ptr %cm_spawn_env_malloc69)
+  %ya_ = alloca i64, align 8
+  store i64 %wide.trip.count158.i, ptr %ya_, align 8
+  %yy_ = bitcast ptr %ya_ to ptr
+  %ya_1 = alloca double, align 8
+  store double %conv22.i, ptr %ya_1, align 8
+  %yy_2 = bitcast ptr %ya_1 to ptr
+  %ya_3 = alloca i64, align 8
+  store i64 %11, ptr %ya_3, align 8
+  %yy_4 = bitcast ptr %ya_3 to ptr
+  %yy_5 = bitcast ptr %call18 to ptr
+  %ya_6 = alloca i1, align 1
+  store i1 %cmp16132.i, ptr %ya_6, align 1
+  %yy_7 = bitcast ptr %ya_6 to ptr
+  %cm_spawn_env_malloc = call ptr @malloc(i64 40)
+  %cm_spawn_slot = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 0
+  store ptr %yy_, ptr %cm_spawn_slot, align 8
+  %cm_spawn_slot8 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 1
+  store ptr %yy_2, ptr %cm_spawn_slot8, align 8
+  %cm_spawn_slot9 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 2
+  store ptr %yy_4, ptr %cm_spawn_slot9, align 8
+  %cm_spawn_slot10 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 3
+  store ptr %yy_5, ptr %cm_spawn_slot10, align 8
+  %cm_spawn_slot11 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 4
+  store ptr %yy_7, ptr %cm_spawn_slot11, align 8
+  call void @_Z5spawnjPFvPvES_(i32 1180195010, ptr @_spawn_loop_func_16, ptr %cm_spawn_env_malloc)
   br label %for.cond15.preheader.i
 
 for.body3.i:                                      ; preds = %for.body3.i, %for.body3.lr.ph.i
@@ -227,31 +227,31 @@ for.cond34.preheader.i:                           ; preds = %for.inc31.i, %for.c
 for.cond38.preheader.lr.ph.i:                     ; preds = %for.cond34.preheader.i
   %cmp39136.i = icmp sgt i32 %conv.i81, 0
   %conv46.i = sitofp i32 %conv.i85 to double
-  %ya_45 = alloca i64, align 8
-  store i64 %10, ptr %ya_45, align 8
-  %yy_46 = bitcast ptr %ya_45 to ptr
-  %ya_47 = alloca double, align 8
-  store double %conv46.i, ptr %ya_47, align 8
-  %yy_48 = bitcast ptr %ya_47 to ptr
-  %ya_49 = alloca i64, align 8
-  store i64 %11, ptr %ya_49, align 8
-  %yy_50 = bitcast ptr %ya_49 to ptr
-  %yy_51 = bitcast ptr %call22 to ptr
-  %ya_52 = alloca i1, align 1
-  store i1 %cmp39136.i, ptr %ya_52, align 1
-  %yy_53 = bitcast ptr %ya_52 to ptr
-  %cm_spawn_env_malloc54 = call ptr @malloc(i64 40)
-  %cm_spawn_slot55 = getelementptr ptr, ptr %cm_spawn_env_malloc54, i32 0
-  store ptr %yy_46, ptr %cm_spawn_slot55, align 8
-  %cm_spawn_slot56 = getelementptr ptr, ptr %cm_spawn_env_malloc54, i32 1
-  store ptr %yy_48, ptr %cm_spawn_slot56, align 8
-  %cm_spawn_slot57 = getelementptr ptr, ptr %cm_spawn_env_malloc54, i32 2
-  store ptr %yy_50, ptr %cm_spawn_slot57, align 8
-  %cm_spawn_slot58 = getelementptr ptr, ptr %cm_spawn_env_malloc54, i32 3
-  store ptr %yy_51, ptr %cm_spawn_slot58, align 8
-  %cm_spawn_slot59 = getelementptr ptr, ptr %cm_spawn_env_malloc54, i32 4
-  store ptr %yy_53, ptr %cm_spawn_slot59, align 8
-  call void @_Z5spawnjPFvPvES_(i32 -77914586, ptr @_spawn_loop_func_25, ptr %cm_spawn_env_malloc54)
+  %ya_12 = alloca i64, align 8
+  store i64 %10, ptr %ya_12, align 8
+  %yy_13 = bitcast ptr %ya_12 to ptr
+  %ya_14 = alloca double, align 8
+  store double %conv46.i, ptr %ya_14, align 8
+  %yy_15 = bitcast ptr %ya_14 to ptr
+  %ya_16 = alloca i64, align 8
+  store i64 %11, ptr %ya_16, align 8
+  %yy_17 = bitcast ptr %ya_16 to ptr
+  %yy_18 = bitcast ptr %call22 to ptr
+  %ya_19 = alloca i1, align 1
+  store i1 %cmp39136.i, ptr %ya_19, align 1
+  %yy_20 = bitcast ptr %ya_19 to ptr
+  %cm_spawn_env_malloc21 = call ptr @malloc(i64 40)
+  %cm_spawn_slot22 = getelementptr ptr, ptr %cm_spawn_env_malloc21, i32 0
+  store ptr %yy_13, ptr %cm_spawn_slot22, align 8
+  %cm_spawn_slot23 = getelementptr ptr, ptr %cm_spawn_env_malloc21, i32 1
+  store ptr %yy_15, ptr %cm_spawn_slot23, align 8
+  %cm_spawn_slot24 = getelementptr ptr, ptr %cm_spawn_env_malloc21, i32 2
+  store ptr %yy_17, ptr %cm_spawn_slot24, align 8
+  %cm_spawn_slot25 = getelementptr ptr, ptr %cm_spawn_env_malloc21, i32 3
+  store ptr %yy_18, ptr %cm_spawn_slot25, align 8
+  %cm_spawn_slot26 = getelementptr ptr, ptr %cm_spawn_env_malloc21, i32 4
+  store ptr %yy_20, ptr %cm_spawn_slot26, align 8
+  call void @_Z5spawnjPFvPvES_(i32 -1045780949, ptr @_spawn_loop_func_19, ptr %cm_spawn_env_malloc21)
   br label %for.cond38.preheader.i
 
 for.body18.i:                                     ; preds = %for.body18.i, %for.body18.lr.ph.i
@@ -290,31 +290,31 @@ for.cond58.preheader.i:                           ; preds = %for.inc55.i, %for.c
 for.cond62.preheader.lr.ph.i:                     ; preds = %for.cond58.preheader.i
   %conv70.i = sitofp i32 %conv.i83 to double
   %wide.trip.count180.i = and i64 %call.i78, 4294967295
-  %ya_30 = alloca i64, align 8
-  store i64 %wide.trip.count180.i, ptr %ya_30, align 8
-  %yy_31 = bitcast ptr %ya_30 to ptr
-  %ya_32 = alloca double, align 8
-  store double %conv70.i, ptr %ya_32, align 8
-  %yy_33 = bitcast ptr %ya_32 to ptr
-  %ya_34 = alloca i64, align 8
-  store i64 %10, ptr %ya_34, align 8
+  %ya_27 = alloca i64, align 8
+  store i64 %wide.trip.count180.i, ptr %ya_27, align 8
+  %yy_28 = bitcast ptr %ya_27 to ptr
+  %ya_29 = alloca double, align 8
+  store double %conv70.i, ptr %ya_29, align 8
+  %yy_30 = bitcast ptr %ya_29 to ptr
+  %ya_31 = alloca i64, align 8
+  store i64 %10, ptr %ya_31, align 8
+  %yy_32 = bitcast ptr %ya_31 to ptr
+  %yy_33 = bitcast ptr %call26 to ptr
+  %ya_34 = alloca i1, align 1
+  store i1 %cmp35138.i, ptr %ya_34, align 1
   %yy_35 = bitcast ptr %ya_34 to ptr
-  %yy_36 = bitcast ptr %call26 to ptr
-  %ya_37 = alloca i1, align 1
-  store i1 %cmp35138.i, ptr %ya_37, align 1
-  %yy_38 = bitcast ptr %ya_37 to ptr
-  %cm_spawn_env_malloc39 = call ptr @malloc(i64 40)
-  %cm_spawn_slot40 = getelementptr ptr, ptr %cm_spawn_env_malloc39, i32 0
-  store ptr %yy_31, ptr %cm_spawn_slot40, align 8
-  %cm_spawn_slot41 = getelementptr ptr, ptr %cm_spawn_env_malloc39, i32 1
-  store ptr %yy_33, ptr %cm_spawn_slot41, align 8
-  %cm_spawn_slot42 = getelementptr ptr, ptr %cm_spawn_env_malloc39, i32 2
-  store ptr %yy_35, ptr %cm_spawn_slot42, align 8
-  %cm_spawn_slot43 = getelementptr ptr, ptr %cm_spawn_env_malloc39, i32 3
-  store ptr %yy_36, ptr %cm_spawn_slot43, align 8
-  %cm_spawn_slot44 = getelementptr ptr, ptr %cm_spawn_env_malloc39, i32 4
-  store ptr %yy_38, ptr %cm_spawn_slot44, align 8
-  call void @_Z5spawnjPFvPvES_(i32 102368946, ptr @_spawn_loop_func_22, ptr %cm_spawn_env_malloc39)
+  %cm_spawn_env_malloc36 = call ptr @malloc(i64 40)
+  %cm_spawn_slot37 = getelementptr ptr, ptr %cm_spawn_env_malloc36, i32 0
+  store ptr %yy_28, ptr %cm_spawn_slot37, align 8
+  %cm_spawn_slot38 = getelementptr ptr, ptr %cm_spawn_env_malloc36, i32 1
+  store ptr %yy_30, ptr %cm_spawn_slot38, align 8
+  %cm_spawn_slot39 = getelementptr ptr, ptr %cm_spawn_env_malloc36, i32 2
+  store ptr %yy_32, ptr %cm_spawn_slot39, align 8
+  %cm_spawn_slot40 = getelementptr ptr, ptr %cm_spawn_env_malloc36, i32 3
+  store ptr %yy_33, ptr %cm_spawn_slot40, align 8
+  %cm_spawn_slot41 = getelementptr ptr, ptr %cm_spawn_env_malloc36, i32 4
+  store ptr %yy_35, ptr %cm_spawn_slot41, align 8
+  call void @_Z5spawnjPFvPvES_(i32 17774050, ptr @_spawn_loop_func_22, ptr %cm_spawn_env_malloc36)
   br label %for.cond62.preheader.i
 
 for.body41.i:                                     ; preds = %for.body41.i, %for.body41.lr.ph.i
@@ -375,42 +375,42 @@ init_array.exit:                                  ; preds = %for.inc79.i, %for.c
 for.cond1.preheader.lr.ph.i89:                    ; preds = %init_array.exit
   %cmp2106.i = icmp sgt i32 %conv.i81, 0
   %wide.trip.count127.i = and i64 %call.i78, 4294967295
-  %ya_75 = alloca i64, align 8
-  store i64 %11, ptr %ya_75, align 8
-  %yy_76 = bitcast ptr %ya_75 to ptr
-  %ya_77 = alloca i64, align 8
-  store i64 %wide.trip.count127.i, ptr %ya_77, align 8
-  %yy_78 = bitcast ptr %ya_77 to ptr
-  %yy_79 = bitcast ptr %call18 to ptr
-  %ya_80 = alloca i1, align 1
-  store i1 %cmp12134.i, ptr %ya_80, align 1
-  %yy_81 = bitcast ptr %ya_80 to ptr
-  %ya_82 = alloca i64, align 8
-  store i64 %30, ptr %ya_82, align 8
-  %yy_83 = bitcast ptr %ya_82 to ptr
-  %yy_84 = bitcast ptr %call10 to ptr
-  %yy_85 = bitcast ptr %call14 to ptr
-  %ya_86 = alloca i1, align 1
-  store i1 %cmp2106.i, ptr %ya_86, align 1
-  %yy_87 = bitcast ptr %ya_86 to ptr
-  %cm_spawn_env_malloc88 = call ptr @malloc(i64 64)
-  %cm_spawn_slot89 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 0
-  store ptr %yy_76, ptr %cm_spawn_slot89, align 8
-  %cm_spawn_slot90 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 1
-  store ptr %yy_78, ptr %cm_spawn_slot90, align 8
-  %cm_spawn_slot91 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 2
-  store ptr %yy_79, ptr %cm_spawn_slot91, align 8
-  %cm_spawn_slot92 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 3
-  store ptr %yy_81, ptr %cm_spawn_slot92, align 8
-  %cm_spawn_slot93 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 4
-  store ptr %yy_83, ptr %cm_spawn_slot93, align 8
-  %cm_spawn_slot94 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 5
-  store ptr %yy_84, ptr %cm_spawn_slot94, align 8
-  %cm_spawn_slot95 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 6
-  store ptr %yy_85, ptr %cm_spawn_slot95, align 8
-  %cm_spawn_slot96 = getelementptr ptr, ptr %cm_spawn_env_malloc88, i32 7
-  store ptr %yy_87, ptr %cm_spawn_slot96, align 8
-  call void @_Z5spawnjPFvPvES_(i32 38226430, ptr @_spawn_loop_func_31, ptr %cm_spawn_env_malloc88)
+  %ya_42 = alloca i64, align 8
+  store i64 %11, ptr %ya_42, align 8
+  %yy_43 = bitcast ptr %ya_42 to ptr
+  %ya_44 = alloca i64, align 8
+  store i64 %wide.trip.count127.i, ptr %ya_44, align 8
+  %yy_45 = bitcast ptr %ya_44 to ptr
+  %yy_46 = bitcast ptr %call18 to ptr
+  %ya_47 = alloca i1, align 1
+  store i1 %cmp12134.i, ptr %ya_47, align 1
+  %yy_48 = bitcast ptr %ya_47 to ptr
+  %ya_49 = alloca i64, align 8
+  store i64 %30, ptr %ya_49, align 8
+  %yy_50 = bitcast ptr %ya_49 to ptr
+  %yy_51 = bitcast ptr %call10 to ptr
+  %yy_52 = bitcast ptr %call14 to ptr
+  %ya_53 = alloca i1, align 1
+  store i1 %cmp2106.i, ptr %ya_53, align 1
+  %yy_54 = bitcast ptr %ya_53 to ptr
+  %cm_spawn_env_malloc55 = call ptr @malloc(i64 64)
+  %cm_spawn_slot56 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 0
+  store ptr %yy_43, ptr %cm_spawn_slot56, align 8
+  %cm_spawn_slot57 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 1
+  store ptr %yy_45, ptr %cm_spawn_slot57, align 8
+  %cm_spawn_slot58 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 2
+  store ptr %yy_46, ptr %cm_spawn_slot58, align 8
+  %cm_spawn_slot59 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 3
+  store ptr %yy_48, ptr %cm_spawn_slot59, align 8
+  %cm_spawn_slot60 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 4
+  store ptr %yy_50, ptr %cm_spawn_slot60, align 8
+  %cm_spawn_slot61 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 5
+  store ptr %yy_51, ptr %cm_spawn_slot61, align 8
+  %cm_spawn_slot62 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 6
+  store ptr %yy_52, ptr %cm_spawn_slot62, align 8
+  %cm_spawn_slot63 = getelementptr ptr, ptr %cm_spawn_env_malloc55, i32 7
+  store ptr %yy_54, ptr %cm_spawn_slot63, align 8
+  call void @_Z5spawnjPFvPvES_(i32 1125486862, ptr @_spawn_loop_func_25, ptr %cm_spawn_env_malloc55)
   br label %for.cond1.preheader.i90
 
 for.cond1.preheader.i90:                          ; preds = %for.inc25.i, %for.cond1.preheader.lr.ph.i89
@@ -465,7 +465,7 @@ for.cond31.preheader.lr.ph.i:                     ; preds = %for.cond28.preheade
   store ptr %yy_107, ptr %cm_spawn_slot117, align 8
   %cm_spawn_slot118 = getelementptr ptr, ptr %cm_spawn_env_malloc110, i32 7
   store ptr %yy_109, ptr %cm_spawn_slot118, align 8
-  call void @_Z5spawnjPFvPvES_(i32 -481724134, ptr @_spawn_loop_func_37, ptr %cm_spawn_env_malloc110)
+  call void @_Z5spawnjPFvPvES_(i32 962217869, ptr @_spawn_loop_func_37, ptr %cm_spawn_env_malloc110)
   br label %for.cond31.preheader.i
 
 for.body3.i93:                                    ; preds = %for.inc22.i, %for.body3.lr.ph.i91
@@ -576,31 +576,31 @@ if.then:                                          ; preds = %kernel_2mm.exit
 
 for.cond1.preheader.lr.ph.i99:                    ; preds = %if.then
   %wide.trip.count30.i = and i64 %call.i78, 4294967295
-  %ya_ = alloca i64, align 8
-  store i64 %wide.trip.count30.i, ptr %ya_, align 8
-  %yy_ = bitcast ptr %ya_ to ptr
-  %ya_1 = alloca i64, align 8
-  store i64 %10, ptr %ya_1, align 8
-  %yy_2 = bitcast ptr %ya_1 to ptr
-  %yy_3 = bitcast ptr %call26 to ptr
-  %ya_4 = alloca i32, align 4
-  store i32 %conv.i79, ptr %ya_4, align 4
-  %yy_5 = bitcast ptr %ya_4 to ptr
-  %ya_6 = alloca i1, align 1
-  store i1 %cmp35138.i, ptr %ya_6, align 1
-  %yy_7 = bitcast ptr %ya_6 to ptr
-  %cm_spawn_env_malloc = call ptr @malloc(i64 40)
-  %cm_spawn_slot = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 0
-  store ptr %yy_, ptr %cm_spawn_slot, align 8
-  %cm_spawn_slot8 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 1
-  store ptr %yy_2, ptr %cm_spawn_slot8, align 8
-  %cm_spawn_slot9 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 2
-  store ptr %yy_3, ptr %cm_spawn_slot9, align 8
-  %cm_spawn_slot10 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 3
-  store ptr %yy_5, ptr %cm_spawn_slot10, align 8
-  %cm_spawn_slot11 = getelementptr ptr, ptr %cm_spawn_env_malloc, i32 4
-  store ptr %yy_7, ptr %cm_spawn_slot11, align 8
-  call void @_Z5spawnjPFvPvES_(i32 1235386295, ptr @_spawn_loop_func_16, ptr %cm_spawn_env_malloc)
+  %ya_64 = alloca i64, align 8
+  store i64 %wide.trip.count30.i, ptr %ya_64, align 8
+  %yy_65 = bitcast ptr %ya_64 to ptr
+  %ya_66 = alloca i64, align 8
+  store i64 %10, ptr %ya_66, align 8
+  %yy_67 = bitcast ptr %ya_66 to ptr
+  %yy_68 = bitcast ptr %call26 to ptr
+  %ya_69 = alloca i32, align 4
+  store i32 %conv.i79, ptr %ya_69, align 4
+  %yy_70 = bitcast ptr %ya_69 to ptr
+  %ya_71 = alloca i1, align 1
+  store i1 %cmp35138.i, ptr %ya_71, align 1
+  %yy_72 = bitcast ptr %ya_71 to ptr
+  %cm_spawn_env_malloc73 = call ptr @malloc(i64 40)
+  %cm_spawn_slot74 = getelementptr ptr, ptr %cm_spawn_env_malloc73, i32 0
+  store ptr %yy_65, ptr %cm_spawn_slot74, align 8
+  %cm_spawn_slot75 = getelementptr ptr, ptr %cm_spawn_env_malloc73, i32 1
+  store ptr %yy_67, ptr %cm_spawn_slot75, align 8
+  %cm_spawn_slot76 = getelementptr ptr, ptr %cm_spawn_env_malloc73, i32 2
+  store ptr %yy_68, ptr %cm_spawn_slot76, align 8
+  %cm_spawn_slot77 = getelementptr ptr, ptr %cm_spawn_env_malloc73, i32 3
+  store ptr %yy_70, ptr %cm_spawn_slot77, align 8
+  %cm_spawn_slot78 = getelementptr ptr, ptr %cm_spawn_env_malloc73, i32 4
+  store ptr %yy_72, ptr %cm_spawn_slot78, align 8
+  call void @_Z5spawnjPFvPvES_(i32 1048355326, ptr @_spawn_loop_func_31, ptr %cm_spawn_env_malloc73)
   br label %for.cond1.preheader.i100
 
 for.cond1.preheader.i100:                         ; preds = %for.inc8.i101, %for.cond1.preheader.lr.ph.i99
@@ -651,24 +651,24 @@ print_array.exit:                                 ; preds = %for.inc8.i101, %if.
   %lf_spawn_env_malloc135 = call ptr @malloc(i64 8)
   %lf_spawn_slot136 = getelementptr inbounds ptr, ptr %lf_spawn_env_malloc135, i32 0
   store ptr %zybc_134, ptr %lf_spawn_slot136, align 8
-  call void @_Z5spawnjPFvPvES_(i32 110064667, ptr @_spawn_loop_free_func_3_0, ptr %lf_spawn_env_malloc135)
+  call void @_Z5spawnjPFvPvES_(i32 -959428996, ptr @_spawn_loop_free_func_3_0, ptr %lf_spawn_env_malloc135)
   call void @__asan_load8(i64 ptrtoint (ptr @stderr to i64))
   %62 = load ptr, ptr @stderr, align 8, !tbaa !6
   %fputc.i = tail call i32 @fputc(i32 10, ptr %62)
   br label %if.end
 
 if.end:                                           ; preds = %print_array.exit, %kernel_2mm.exit
-  call void @_Z4joinj(i32 1235386295)
-  call void @_Z4joinj(i32 -543910199)
-  call void @_Z4joinj(i32 102368946)
-  call void @_Z4joinj(i32 -77914586)
-  call void @_Z4joinj(i32 862926476)
-  call void @_Z4joinj(i32 38226430)
-  call void @_Z4joinj(i32 -481724134)
-  call void @_Z4joinj(i32 -438200778)
-  call void @_Z4joinj(i32 -2052848140)
-  call void @_Z4joinj(i32 1148070496)
-  call void @_Z4joinj(i32 110064667)
+  call void @_Z4joinj(i32 1180195010)
+  call void @_Z4joinj(i32 -1045780949)
+  call void @_Z4joinj(i32 17774050)
+  call void @_Z4joinj(i32 1125486862)
+  call void @_Z4joinj(i32 1048355326)
+  call void @_Z4joinj(i32 1055325313)
+  call void @_Z4joinj(i32 962217869)
+  call void @_Z4joinj(i32 -1359809123)
+  call void @_Z4joinj(i32 -1752095921)
+  call void @_Z4joinj(i32 -547341230)
+  call void @_Z4joinj(i32 -959428996)
   tail call void @free(ptr noundef %call10) #8
   tail call void @free(ptr noundef %call14) #8
   tail call void @free(ptr noundef %call18) #8
@@ -723,58 +723,46 @@ define internal void @asan.module_dtor() #7 comdat {
 
 declare void @_Z4joinj(i32)
 
-define internal void @_loop_func_16(i64 %wide.trip.count30.i, i64 %0, ptr %call26, i32 %conv.i79, i1 %cmp35138.i) {
+define internal void @_loop_func_16(i64 %wide.trip.count158.i, double %conv22.i, i64 %0, ptr %call18, i1 %cmp16132.i) {
 entry:
-  %1 = bitcast i64 %wide.trip.count30.i to i64
-  %2 = bitcast i64 %0 to i64
-  %3 = bitcast ptr %call26 to ptr
-  %4 = bitcast i32 %conv.i79 to i32
-  %5 = bitcast i1 %cmp35138.i to i1
-  br label %for.cond1.preheader.i100
+  %1 = bitcast i64 %wide.trip.count158.i to i64
+  %2 = bitcast double %conv22.i to double
+  %3 = bitcast i64 %0 to i64
+  %4 = bitcast ptr %call18 to ptr
+  %5 = bitcast i1 %cmp16132.i to i1
+  br label %for.cond15.preheader.i
 
-for.inc8.i101:                                    ; preds = %for.cond1.preheader.i100, %for.inc.i
-  %6 = add nuw nsw i64 %26, 1
+for.inc31.i:                                      ; preds = %for.cond15.preheader.i, %for.body18.i
+  %6 = add nuw nsw i64 %21, 1
   %7 = icmp eq i64 %6, %1
-  br i1 %7, label %exit, label %for.cond1.preheader.i100, !llvm.loop !29
+  br i1 %7, label %exit, label %for.cond15.preheader.i, !llvm.loop !17
 
-for.inc.i:                                        ; preds = %if.then.i, %for.body3.i106
-  %8 = add nuw nsw i64 %10, 1
-  %9 = icmp eq i64 %8, %2
-  br i1 %9, label %for.inc8.i101, label %for.body3.i106, !llvm.loop !28
+for.body18.i:                                     ; preds = %for.body18.lr.ph.i, %for.body18.i
+  %8 = phi i64 [ 0, %for.body18.lr.ph.i ], [ %9, %for.body18.i ]
+  %9 = add nuw nsw i64 %8, 1
+  %10 = trunc i64 %9 to i32
+  %11 = sitofp i32 %10 to double
+  %12 = fmul double %18, %11
+  %13 = fdiv double %12, %2
+  %14 = getelementptr inbounds double, ptr %20, i64 %8
+  %15 = ptrtoint ptr %14 to i64
+  call void @__asan_store8(i64 %15)
+  store double %13, ptr %14, align 8, !tbaa !10
+  %16 = icmp eq i64 %9, %3
+  br i1 %16, label %for.inc31.i, label %for.body18.i, !llvm.loop !16
 
-for.body3.i106:                                   ; preds = %for.body3.lr.ph.i102, %for.inc.i
-  %10 = phi i64 [ 0, %for.body3.lr.ph.i102 ], [ %8, %for.inc.i ]
-  call void @__asan_load8(i64 ptrtoint (ptr @stderr to i64))
-  %11 = load ptr, ptr @stderr, align 8, !tbaa !6
-  %12 = getelementptr inbounds double, ptr %21, i64 %10
-  %13 = ptrtoint ptr %12 to i64
-  call void @__asan_load8(i64 %13)
-  %14 = load double, ptr %12, align 8, !tbaa !10
-  %15 = tail call i32 (ptr, ptr, ...) @fprintf(ptr noundef %11, ptr noundef nonnull @.str, double noundef %14) #10
-  %16 = trunc i64 %10 to i32
-  %17 = add nsw i32 %23, %16
-  %18 = srem i32 %17, 20
-  %19 = icmp eq i32 %18, 0
-  br i1 %19, label %if.then.i, label %for.inc.i
+for.body18.lr.ph.i:                               ; preds = %for.cond15.preheader.i
+  %17 = trunc i64 %21 to i32
+  %18 = sitofp i32 %17 to double
+  %19 = mul nuw nsw i64 %21, %3
+  %20 = getelementptr inbounds double, ptr %4, i64 %19
+  br label %for.body18.i
 
-for.body3.lr.ph.i102:                             ; preds = %for.cond1.preheader.i100
-  %20 = mul nuw nsw i64 %26, %2
-  %21 = getelementptr inbounds double, ptr %3, i64 %20
-  %22 = trunc i64 %26 to i32
-  %23 = mul nsw i32 %22, %4
-  br label %for.body3.i106
+for.cond15.preheader.i:                           ; preds = %entry, %for.inc31.i
+  %21 = phi i64 [ 0, %entry ], [ %6, %for.inc31.i ]
+  br i1 %5, label %for.body18.lr.ph.i, label %for.inc31.i
 
-if.then.i:                                        ; preds = %for.body3.i106
-  call void @__asan_load8(i64 ptrtoint (ptr @stderr to i64))
-  %24 = load ptr, ptr @stderr, align 8, !tbaa !6
-  %25 = tail call i32 @fputc(i32 10, ptr %24)
-  br label %for.inc.i
-
-for.cond1.preheader.i100:                         ; preds = %entry, %for.inc8.i101
-  %26 = phi i64 [ 0, %entry ], [ %6, %for.inc8.i101 ]
-  br i1 %5, label %for.body3.lr.ph.i102, label %for.inc8.i101
-
-exit:                                             ; preds = %for.inc8.i101
+exit:                                             ; preds = %for.inc31.i
   ret void
 }
 
@@ -788,66 +776,66 @@ entry:
   %cm_env_slot1 = getelementptr ptr, ptr %cm_env_base, i32 1
   %4 = load ptr, ptr %cm_env_slot1, align 8
   %5 = bitcast ptr %4 to ptr
-  %6 = load i64, ptr %5, align 8
+  %6 = load double, ptr %5, align 8
   %cm_env_slot2 = getelementptr ptr, ptr %cm_env_base, i32 2
   %7 = load ptr, ptr %cm_env_slot2, align 8
   %8 = bitcast ptr %7 to ptr
+  %9 = load i64, ptr %8, align 8
   %cm_env_slot3 = getelementptr ptr, ptr %cm_env_base, i32 3
-  %9 = load ptr, ptr %cm_env_slot3, align 8
-  %10 = bitcast ptr %9 to ptr
-  %11 = load i32, ptr %10, align 4
+  %10 = load ptr, ptr %cm_env_slot3, align 8
+  %11 = bitcast ptr %10 to ptr
   %cm_env_slot4 = getelementptr ptr, ptr %cm_env_base, i32 4
   %12 = load ptr, ptr %cm_env_slot4, align 8
   %13 = bitcast ptr %12 to ptr
   %14 = load i1, ptr %13, align 1
-  call void @_loop_func_16(i64 %3, i64 %6, ptr %8, i32 %11, i1 %14)
+  call void @_loop_func_16(i64 %3, double %6, i64 %9, ptr %11, i1 %14)
   call void @free(ptr %0)
   ret void
 }
 
 declare void @_Z5spawnjPFvPvES_(i32, ptr, ptr)
 
-define internal void @_loop_func_19(i64 %wide.trip.count148.i, double %conv5.i, i64 %wide.trip.count.i, i64 %0, ptr %call14, i1 %cmp2128.i) {
+define internal void @_loop_func_19(i64 %0, double %conv46.i, i64 %1, ptr %call22, i1 %cmp39136.i) {
 entry:
-  %1 = bitcast i64 %wide.trip.count148.i to i64
-  %2 = bitcast double %conv5.i to double
-  %3 = bitcast i64 %wide.trip.count.i to i64
-  %4 = bitcast i64 %0 to i64
-  %5 = bitcast ptr %call14 to ptr
-  %6 = bitcast i1 %cmp2128.i to i1
-  br label %for.cond1.preheader.i
+  %2 = bitcast i64 %0 to i64
+  %3 = bitcast double %conv46.i to double
+  %4 = bitcast i64 %1 to i64
+  %5 = bitcast ptr %call22 to ptr
+  %6 = bitcast i1 %cmp39136.i to i1
+  br label %for.cond38.preheader.i
 
-for.inc8.i:                                       ; preds = %for.cond1.preheader.i, %for.body3.i
-  %7 = add nuw nsw i64 %22, 1
-  %8 = icmp eq i64 %7, %1
-  br i1 %8, label %exit, label %for.cond1.preheader.i, !llvm.loop !15
+for.inc55.i:                                      ; preds = %for.cond38.preheader.i, %for.body41.i
+  %7 = add nuw nsw i64 %23, 1
+  %8 = icmp eq i64 %7, %2
+  br i1 %8, label %exit, label %for.cond38.preheader.i, !llvm.loop !19
 
-for.body3.i:                                      ; preds = %for.body3.lr.ph.i, %for.body3.i
-  %9 = phi i64 [ 0, %for.body3.lr.ph.i ], [ %16, %for.body3.i ]
+for.body41.i:                                     ; preds = %for.body41.lr.ph.i, %for.body41.i
+  %9 = phi i64 [ 0, %for.body41.lr.ph.i ], [ %17, %for.body41.i ]
   %10 = trunc i64 %9 to i32
-  %11 = sitofp i32 %10 to double
-  %12 = fmul double %19, %11
-  %13 = fdiv double %12, %2
-  %14 = getelementptr inbounds double, ptr %21, i64 %9
-  %15 = ptrtoint ptr %14 to i64
-  call void @__asan_store8(i64 %15)
-  store double %13, ptr %14, align 8, !tbaa !10
-  %16 = add nuw nsw i64 %9, 1
-  %17 = icmp eq i64 %16, %3
-  br i1 %17, label %for.inc8.i, label %for.body3.i, !llvm.loop !12
+  %11 = add i32 %10, 3
+  %12 = sitofp i32 %11 to double
+  %13 = fmul double %20, %12
+  %14 = fdiv double %13, %3
+  %15 = getelementptr inbounds double, ptr %22, i64 %9
+  %16 = ptrtoint ptr %15 to i64
+  call void @__asan_store8(i64 %16)
+  store double %14, ptr %15, align 8, !tbaa !10
+  %17 = add nuw nsw i64 %9, 1
+  %18 = icmp eq i64 %17, %4
+  br i1 %18, label %for.inc55.i, label %for.body41.i, !llvm.loop !18
 
-for.body3.lr.ph.i:                                ; preds = %for.cond1.preheader.i
-  %18 = trunc i64 %22 to i32
-  %19 = sitofp i32 %18 to double
-  %20 = mul nuw nsw i64 %22, %4
-  %21 = getelementptr inbounds double, ptr %5, i64 %20
-  br label %for.body3.i
+for.body41.lr.ph.i:                               ; preds = %for.cond38.preheader.i
+  %19 = trunc i64 %23 to i32
+  %20 = sitofp i32 %19 to double
+  %21 = mul nuw nsw i64 %23, %4
+  %22 = getelementptr inbounds double, ptr %5, i64 %21
+  br label %for.body41.i
 
-for.cond1.preheader.i:                            ; preds = %entry, %for.inc8.i
-  %22 = phi i64 [ 0, %entry ], [ %7, %for.inc8.i ]
-  br i1 %6, label %for.body3.lr.ph.i, label %for.inc8.i
+for.cond38.preheader.i:                           ; preds = %entry, %for.inc55.i
+  %23 = phi i64 [ 0, %entry ], [ %7, %for.inc55.i ]
+  br i1 %6, label %for.body41.lr.ph.i, label %for.inc55.i
 
-exit:                                             ; preds = %for.inc8.i
+exit:                                             ; preds = %for.inc55.i
   ret void
 }
 
@@ -869,15 +857,11 @@ entry:
   %cm_env_slot3 = getelementptr ptr, ptr %cm_env_base, i32 3
   %10 = load ptr, ptr %cm_env_slot3, align 8
   %11 = bitcast ptr %10 to ptr
-  %12 = load i64, ptr %11, align 8
   %cm_env_slot4 = getelementptr ptr, ptr %cm_env_base, i32 4
-  %13 = load ptr, ptr %cm_env_slot4, align 8
-  %14 = bitcast ptr %13 to ptr
-  %cm_env_slot5 = getelementptr ptr, ptr %cm_env_base, i32 5
-  %15 = load ptr, ptr %cm_env_slot5, align 8
-  %16 = bitcast ptr %15 to ptr
-  %17 = load i1, ptr %16, align 1
-  call void @_loop_func_19(i64 %3, double %6, i64 %9, i64 %12, ptr %14, i1 %17)
+  %12 = load ptr, ptr %cm_env_slot4, align 8
+  %13 = bitcast ptr %12 to ptr
+  %14 = load i1, ptr %13, align 1
+  call void @_loop_func_19(i64 %3, double %6, i64 %9, ptr %11, i1 %14)
   call void @free(ptr %0)
   ret void
 }
@@ -953,148 +937,7 @@ entry:
   ret void
 }
 
-define internal void @_loop_func_25(i64 %0, double %conv46.i, i64 %1, ptr %call22, i1 %cmp39136.i) {
-entry:
-  %2 = bitcast i64 %0 to i64
-  %3 = bitcast double %conv46.i to double
-  %4 = bitcast i64 %1 to i64
-  %5 = bitcast ptr %call22 to ptr
-  %6 = bitcast i1 %cmp39136.i to i1
-  br label %for.cond38.preheader.i
-
-for.inc55.i:                                      ; preds = %for.cond38.preheader.i, %for.body41.i
-  %7 = add nuw nsw i64 %23, 1
-  %8 = icmp eq i64 %7, %2
-  br i1 %8, label %exit, label %for.cond38.preheader.i, !llvm.loop !19
-
-for.body41.i:                                     ; preds = %for.body41.lr.ph.i, %for.body41.i
-  %9 = phi i64 [ 0, %for.body41.lr.ph.i ], [ %17, %for.body41.i ]
-  %10 = trunc i64 %9 to i32
-  %11 = add i32 %10, 3
-  %12 = sitofp i32 %11 to double
-  %13 = fmul double %20, %12
-  %14 = fdiv double %13, %3
-  %15 = getelementptr inbounds double, ptr %22, i64 %9
-  %16 = ptrtoint ptr %15 to i64
-  call void @__asan_store8(i64 %16)
-  store double %14, ptr %15, align 8, !tbaa !10
-  %17 = add nuw nsw i64 %9, 1
-  %18 = icmp eq i64 %17, %4
-  br i1 %18, label %for.inc55.i, label %for.body41.i, !llvm.loop !18
-
-for.body41.lr.ph.i:                               ; preds = %for.cond38.preheader.i
-  %19 = trunc i64 %23 to i32
-  %20 = sitofp i32 %19 to double
-  %21 = mul nuw nsw i64 %23, %4
-  %22 = getelementptr inbounds double, ptr %5, i64 %21
-  br label %for.body41.i
-
-for.cond38.preheader.i:                           ; preds = %entry, %for.inc55.i
-  %23 = phi i64 [ 0, %entry ], [ %7, %for.inc55.i ]
-  br i1 %6, label %for.body41.lr.ph.i, label %for.inc55.i
-
-exit:                                             ; preds = %for.inc55.i
-  ret void
-}
-
-define internal void @_spawn_loop_func_25(ptr %0) {
-entry:
-  %cm_env_base = bitcast ptr %0 to ptr
-  %cm_env_slot = getelementptr ptr, ptr %cm_env_base, i32 0
-  %1 = load ptr, ptr %cm_env_slot, align 8
-  %2 = bitcast ptr %1 to ptr
-  %3 = load i64, ptr %2, align 8
-  %cm_env_slot1 = getelementptr ptr, ptr %cm_env_base, i32 1
-  %4 = load ptr, ptr %cm_env_slot1, align 8
-  %5 = bitcast ptr %4 to ptr
-  %6 = load double, ptr %5, align 8
-  %cm_env_slot2 = getelementptr ptr, ptr %cm_env_base, i32 2
-  %7 = load ptr, ptr %cm_env_slot2, align 8
-  %8 = bitcast ptr %7 to ptr
-  %9 = load i64, ptr %8, align 8
-  %cm_env_slot3 = getelementptr ptr, ptr %cm_env_base, i32 3
-  %10 = load ptr, ptr %cm_env_slot3, align 8
-  %11 = bitcast ptr %10 to ptr
-  %cm_env_slot4 = getelementptr ptr, ptr %cm_env_base, i32 4
-  %12 = load ptr, ptr %cm_env_slot4, align 8
-  %13 = bitcast ptr %12 to ptr
-  %14 = load i1, ptr %13, align 1
-  call void @_loop_func_25(i64 %3, double %6, i64 %9, ptr %11, i1 %14)
-  call void @free(ptr %0)
-  ret void
-}
-
-define internal void @_loop_func_28(i64 %wide.trip.count158.i, double %conv22.i, i64 %0, ptr %call18, i1 %cmp16132.i) {
-entry:
-  %1 = bitcast i64 %wide.trip.count158.i to i64
-  %2 = bitcast double %conv22.i to double
-  %3 = bitcast i64 %0 to i64
-  %4 = bitcast ptr %call18 to ptr
-  %5 = bitcast i1 %cmp16132.i to i1
-  br label %for.cond15.preheader.i
-
-for.inc31.i:                                      ; preds = %for.cond15.preheader.i, %for.body18.i
-  %6 = add nuw nsw i64 %21, 1
-  %7 = icmp eq i64 %6, %1
-  br i1 %7, label %exit, label %for.cond15.preheader.i, !llvm.loop !17
-
-for.body18.i:                                     ; preds = %for.body18.lr.ph.i, %for.body18.i
-  %8 = phi i64 [ 0, %for.body18.lr.ph.i ], [ %9, %for.body18.i ]
-  %9 = add nuw nsw i64 %8, 1
-  %10 = trunc i64 %9 to i32
-  %11 = sitofp i32 %10 to double
-  %12 = fmul double %18, %11
-  %13 = fdiv double %12, %2
-  %14 = getelementptr inbounds double, ptr %20, i64 %8
-  %15 = ptrtoint ptr %14 to i64
-  call void @__asan_store8(i64 %15)
-  store double %13, ptr %14, align 8, !tbaa !10
-  %16 = icmp eq i64 %9, %3
-  br i1 %16, label %for.inc31.i, label %for.body18.i, !llvm.loop !16
-
-for.body18.lr.ph.i:                               ; preds = %for.cond15.preheader.i
-  %17 = trunc i64 %21 to i32
-  %18 = sitofp i32 %17 to double
-  %19 = mul nuw nsw i64 %21, %3
-  %20 = getelementptr inbounds double, ptr %4, i64 %19
-  br label %for.body18.i
-
-for.cond15.preheader.i:                           ; preds = %entry, %for.inc31.i
-  %21 = phi i64 [ 0, %entry ], [ %6, %for.inc31.i ]
-  br i1 %5, label %for.body18.lr.ph.i, label %for.inc31.i
-
-exit:                                             ; preds = %for.inc31.i
-  ret void
-}
-
-define internal void @_spawn_loop_func_28(ptr %0) {
-entry:
-  %cm_env_base = bitcast ptr %0 to ptr
-  %cm_env_slot = getelementptr ptr, ptr %cm_env_base, i32 0
-  %1 = load ptr, ptr %cm_env_slot, align 8
-  %2 = bitcast ptr %1 to ptr
-  %3 = load i64, ptr %2, align 8
-  %cm_env_slot1 = getelementptr ptr, ptr %cm_env_base, i32 1
-  %4 = load ptr, ptr %cm_env_slot1, align 8
-  %5 = bitcast ptr %4 to ptr
-  %6 = load double, ptr %5, align 8
-  %cm_env_slot2 = getelementptr ptr, ptr %cm_env_base, i32 2
-  %7 = load ptr, ptr %cm_env_slot2, align 8
-  %8 = bitcast ptr %7 to ptr
-  %9 = load i64, ptr %8, align 8
-  %cm_env_slot3 = getelementptr ptr, ptr %cm_env_base, i32 3
-  %10 = load ptr, ptr %cm_env_slot3, align 8
-  %11 = bitcast ptr %10 to ptr
-  %cm_env_slot4 = getelementptr ptr, ptr %cm_env_base, i32 4
-  %12 = load ptr, ptr %cm_env_slot4, align 8
-  %13 = bitcast ptr %12 to ptr
-  %14 = load i1, ptr %13, align 1
-  call void @_loop_func_28(i64 %3, double %6, i64 %9, ptr %11, i1 %14)
-  call void @free(ptr %0)
-  ret void
-}
-
-define internal void @_loop_func_31(i64 %0, i64 %wide.trip.count127.i, ptr %call18, i1 %cmp12134.i, i64 %1, ptr %call10, ptr %call14, i1 %cmp2106.i) {
+define internal void @_loop_func_25(i64 %0, i64 %wide.trip.count127.i, ptr %call18, i1 %cmp12134.i, i64 %1, ptr %call10, ptr %call14, i1 %cmp2106.i) {
 entry:
   %2 = bitcast i64 %0 to i64
   %3 = bitcast i64 %wide.trip.count127.i to i64
@@ -1164,7 +1007,7 @@ exit:                                             ; preds = %for.inc25.i
   ret void
 }
 
-define internal void @_spawn_loop_func_31(ptr %0) {
+define internal void @_spawn_loop_func_25(ptr %0) {
 entry:
   %cm_env_base = bitcast ptr %0 to ptr
   %cm_env_slot = getelementptr ptr, ptr %cm_env_base, i32 0
@@ -1196,7 +1039,164 @@ entry:
   %19 = load ptr, ptr %cm_env_slot7, align 8
   %20 = bitcast ptr %19 to ptr
   %21 = load i1, ptr %20, align 1
-  call void @_loop_func_31(i64 %3, i64 %6, ptr %8, i1 %11, i64 %14, ptr %16, ptr %18, i1 %21)
+  call void @_loop_func_25(i64 %3, i64 %6, ptr %8, i1 %11, i64 %14, ptr %16, ptr %18, i1 %21)
+  call void @free(ptr %0)
+  ret void
+}
+
+define internal void @_loop_func_31(i64 %wide.trip.count30.i, i64 %0, ptr %call26, i32 %conv.i79, i1 %cmp35138.i) {
+entry:
+  %1 = bitcast i64 %wide.trip.count30.i to i64
+  %2 = bitcast i64 %0 to i64
+  %3 = bitcast ptr %call26 to ptr
+  %4 = bitcast i32 %conv.i79 to i32
+  %5 = bitcast i1 %cmp35138.i to i1
+  br label %for.cond1.preheader.i100
+
+for.inc8.i101:                                    ; preds = %for.cond1.preheader.i100, %for.inc.i
+  %6 = add nuw nsw i64 %26, 1
+  %7 = icmp eq i64 %6, %1
+  br i1 %7, label %exit, label %for.cond1.preheader.i100, !llvm.loop !29
+
+for.inc.i:                                        ; preds = %if.then.i, %for.body3.i106
+  %8 = add nuw nsw i64 %10, 1
+  %9 = icmp eq i64 %8, %2
+  br i1 %9, label %for.inc8.i101, label %for.body3.i106, !llvm.loop !28
+
+for.body3.i106:                                   ; preds = %for.body3.lr.ph.i102, %for.inc.i
+  %10 = phi i64 [ 0, %for.body3.lr.ph.i102 ], [ %8, %for.inc.i ]
+  call void @__asan_load8(i64 ptrtoint (ptr @stderr to i64))
+  %11 = load ptr, ptr @stderr, align 8, !tbaa !6
+  %12 = getelementptr inbounds double, ptr %21, i64 %10
+  %13 = ptrtoint ptr %12 to i64
+  call void @__asan_load8(i64 %13)
+  %14 = load double, ptr %12, align 8, !tbaa !10
+  %15 = tail call i32 (ptr, ptr, ...) @fprintf(ptr noundef %11, ptr noundef nonnull @.str, double noundef %14) #10
+  %16 = trunc i64 %10 to i32
+  %17 = add nsw i32 %23, %16
+  %18 = srem i32 %17, 20
+  %19 = icmp eq i32 %18, 0
+  br i1 %19, label %if.then.i, label %for.inc.i
+
+for.body3.lr.ph.i102:                             ; preds = %for.cond1.preheader.i100
+  %20 = mul nuw nsw i64 %26, %2
+  %21 = getelementptr inbounds double, ptr %3, i64 %20
+  %22 = trunc i64 %26 to i32
+  %23 = mul nsw i32 %22, %4
+  br label %for.body3.i106
+
+if.then.i:                                        ; preds = %for.body3.i106
+  call void @__asan_load8(i64 ptrtoint (ptr @stderr to i64))
+  %24 = load ptr, ptr @stderr, align 8, !tbaa !6
+  %25 = tail call i32 @fputc(i32 10, ptr %24)
+  br label %for.inc.i
+
+for.cond1.preheader.i100:                         ; preds = %entry, %for.inc8.i101
+  %26 = phi i64 [ 0, %entry ], [ %6, %for.inc8.i101 ]
+  br i1 %5, label %for.body3.lr.ph.i102, label %for.inc8.i101
+
+exit:                                             ; preds = %for.inc8.i101
+  ret void
+}
+
+define internal void @_spawn_loop_func_31(ptr %0) {
+entry:
+  %cm_env_base = bitcast ptr %0 to ptr
+  %cm_env_slot = getelementptr ptr, ptr %cm_env_base, i32 0
+  %1 = load ptr, ptr %cm_env_slot, align 8
+  %2 = bitcast ptr %1 to ptr
+  %3 = load i64, ptr %2, align 8
+  %cm_env_slot1 = getelementptr ptr, ptr %cm_env_base, i32 1
+  %4 = load ptr, ptr %cm_env_slot1, align 8
+  %5 = bitcast ptr %4 to ptr
+  %6 = load i64, ptr %5, align 8
+  %cm_env_slot2 = getelementptr ptr, ptr %cm_env_base, i32 2
+  %7 = load ptr, ptr %cm_env_slot2, align 8
+  %8 = bitcast ptr %7 to ptr
+  %cm_env_slot3 = getelementptr ptr, ptr %cm_env_base, i32 3
+  %9 = load ptr, ptr %cm_env_slot3, align 8
+  %10 = bitcast ptr %9 to ptr
+  %11 = load i32, ptr %10, align 4
+  %cm_env_slot4 = getelementptr ptr, ptr %cm_env_base, i32 4
+  %12 = load ptr, ptr %cm_env_slot4, align 8
+  %13 = bitcast ptr %12 to ptr
+  %14 = load i1, ptr %13, align 1
+  call void @_loop_func_31(i64 %3, i64 %6, ptr %8, i32 %11, i1 %14)
+  call void @free(ptr %0)
+  ret void
+}
+
+define internal void @_loop_func_34(i64 %wide.trip.count148.i, double %conv5.i, i64 %wide.trip.count.i, i64 %0, ptr %call14, i1 %cmp2128.i) {
+entry:
+  %1 = bitcast i64 %wide.trip.count148.i to i64
+  %2 = bitcast double %conv5.i to double
+  %3 = bitcast i64 %wide.trip.count.i to i64
+  %4 = bitcast i64 %0 to i64
+  %5 = bitcast ptr %call14 to ptr
+  %6 = bitcast i1 %cmp2128.i to i1
+  br label %for.cond1.preheader.i
+
+for.inc8.i:                                       ; preds = %for.cond1.preheader.i, %for.body3.i
+  %7 = add nuw nsw i64 %22, 1
+  %8 = icmp eq i64 %7, %1
+  br i1 %8, label %exit, label %for.cond1.preheader.i, !llvm.loop !15
+
+for.body3.i:                                      ; preds = %for.body3.lr.ph.i, %for.body3.i
+  %9 = phi i64 [ 0, %for.body3.lr.ph.i ], [ %16, %for.body3.i ]
+  %10 = trunc i64 %9 to i32
+  %11 = sitofp i32 %10 to double
+  %12 = fmul double %19, %11
+  %13 = fdiv double %12, %2
+  %14 = getelementptr inbounds double, ptr %21, i64 %9
+  %15 = ptrtoint ptr %14 to i64
+  call void @__asan_store8(i64 %15)
+  store double %13, ptr %14, align 8, !tbaa !10
+  %16 = add nuw nsw i64 %9, 1
+  %17 = icmp eq i64 %16, %3
+  br i1 %17, label %for.inc8.i, label %for.body3.i, !llvm.loop !12
+
+for.body3.lr.ph.i:                                ; preds = %for.cond1.preheader.i
+  %18 = trunc i64 %22 to i32
+  %19 = sitofp i32 %18 to double
+  %20 = mul nuw nsw i64 %22, %4
+  %21 = getelementptr inbounds double, ptr %5, i64 %20
+  br label %for.body3.i
+
+for.cond1.preheader.i:                            ; preds = %entry, %for.inc8.i
+  %22 = phi i64 [ 0, %entry ], [ %7, %for.inc8.i ]
+  br i1 %6, label %for.body3.lr.ph.i, label %for.inc8.i
+
+exit:                                             ; preds = %for.inc8.i
+  ret void
+}
+
+define internal void @_spawn_loop_func_34(ptr %0) {
+entry:
+  %cm_env_base = bitcast ptr %0 to ptr
+  %cm_env_slot = getelementptr ptr, ptr %cm_env_base, i32 0
+  %1 = load ptr, ptr %cm_env_slot, align 8
+  %2 = bitcast ptr %1 to ptr
+  %3 = load i64, ptr %2, align 8
+  %cm_env_slot1 = getelementptr ptr, ptr %cm_env_base, i32 1
+  %4 = load ptr, ptr %cm_env_slot1, align 8
+  %5 = bitcast ptr %4 to ptr
+  %6 = load double, ptr %5, align 8
+  %cm_env_slot2 = getelementptr ptr, ptr %cm_env_base, i32 2
+  %7 = load ptr, ptr %cm_env_slot2, align 8
+  %8 = bitcast ptr %7 to ptr
+  %9 = load i64, ptr %8, align 8
+  %cm_env_slot3 = getelementptr ptr, ptr %cm_env_base, i32 3
+  %10 = load ptr, ptr %cm_env_slot3, align 8
+  %11 = bitcast ptr %10 to ptr
+  %12 = load i64, ptr %11, align 8
+  %cm_env_slot4 = getelementptr ptr, ptr %cm_env_base, i32 4
+  %13 = load ptr, ptr %cm_env_slot4, align 8
+  %14 = bitcast ptr %13 to ptr
+  %cm_env_slot5 = getelementptr ptr, ptr %cm_env_base, i32 5
+  %15 = load ptr, ptr %cm_env_slot5, align 8
+  %16 = bitcast ptr %15 to ptr
+  %17 = load i1, ptr %16, align 1
+  call void @_loop_func_34(i64 %3, double %6, i64 %9, i64 %12, ptr %14, i1 %17)
   call void @free(ptr %0)
   ret void
 }

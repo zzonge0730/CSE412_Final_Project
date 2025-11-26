@@ -66,7 +66,17 @@ RUN mkdir -p /opt/llvm-17/build \
         -DCMAKE_INSTALL_PREFIX=/opt/llvm-17/install \
         /opt/llvm-17/llvm \
     && ninja -j "$(nproc)" \
-    && ninja install
+    && ninja install \
+    && ninja install-runtimes
+
+# Ensure compiler-rt runtime archives (e.g., ASAN) are available in the installation
+RUN cd /tmp \
+    && wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz \
+    && tar -xf clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz \
+    && mkdir -p /opt/llvm-17/install/lib/clang/17/lib \
+    && cp -r clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/lib/x86_64-unknown-linux-gnu /opt/llvm-17/install/lib/clang/17/lib/ \
+    && ln -sfn x86_64-unknown-linux-gnu /opt/llvm-17/install/lib/clang/17/lib/linux \
+    && rm -rf clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04 clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz
 # Install MoveC in builder stage
 RUN git clone --depth=1 https://github.com/drzchen/movec.git /opt/movec
 

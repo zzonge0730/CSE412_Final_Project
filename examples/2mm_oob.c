@@ -1,9 +1,6 @@
 /**
- * 2mm.c: This file is part of the PolyBench/C 3.2 test suite.
- *
- *
- * Contact: Louis-Noel Pouchet <pouchet@cse.ohio-state.edu>
- * Web address: http://polybench.sourceforge.net
+ * 2mm.c with intentional Out-of-Bounds access for Spatial Safety verification
+ * This is a fault injection test to verify that Catamaran correctly detects spatial errors
  */
 
 #include <stdio.h>
@@ -12,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 
+static volatile double oob_guard = 0.0;
 
   static
 void init_array(int ni, int nj, int nk, int nl,
@@ -85,8 +83,14 @@ void kernel_2mm(int ni, int nj, int nk, int nl,
     for (j = 0; j < nl; j++)
     {
       D[i][j] *= beta;
-      for (k = 0; k < nj; ++k)
-        D[i][j] += tmp[i][k] * C[k][j];
+      for (k = 0; k < nj; ++k) {
+        // INTENTIONAL BUG: Access tmp[i][k+bad_offset] to cause OOB.
+        // Use volatile to prevent compiler from eliminating this as UB at compile-time.
+        volatile int bad_offset = 99999999;
+        double oob_val = tmp[i][k+bad_offset];
+        oob_guard += oob_val;
+        D[i][j] += oob_val * C[k][j];
+      }
     }
 #pragma endscop
 
@@ -101,48 +105,30 @@ int main(int argc, char** argv)
   int nk = atoi(argv[4]);
   int nl = atoi(argv[5]);
 
+  double *alpha = (double*)malloc(sizeof(double));
+  double *beta = (double*)malloc(sizeof(double));
+  double (*A)[nl] = (double(*)[nl])malloc((ni) * (nl) * sizeof(double));
+  double (*B)[nj] = (double(*)[nj])malloc((nk) * (nj) * sizeof(double));
+  double (*C)[nj] = (double(*)[nj])malloc((nl) * (nj) * sizeof(double));
+  double (*D)[nl] = (double(*)[nl])malloc((ni) * (nl) * sizeof(double));
+  double (*tmp)[nj] = (double(*)[nj])malloc((ni) * (nj) * sizeof(double));
 
-  double alpha;
-  double beta;
-  double (*tmp)[ni][nj]; tmp = (double(*)[ni][nj])malloc((ni) * (nj) * sizeof(double));;
-  double (*A)[ni][nk]; A = (double(*)[ni][nk])malloc((ni) * (nk) * sizeof(double));;
-  double (*B)[nk][nj]; B = (double(*)[nk][nj])malloc((nk) * (nj) * sizeof(double));;
-  double (*C)[nl][nj]; C = (double(*)[nl][nj])malloc((nl) * (nj) * sizeof(double));;
-  double (*D)[ni][nl]; D = (double(*)[ni][nl])malloc((ni) * (nl) * sizeof(double));;
+  init_array(ni, nj, nk, nl, alpha, beta, A, B, C, D);
 
+  kernel_2mm(ni, nj, nk, nl, *alpha, *beta, tmp, A, B, C, D);
 
-  init_array (ni, nj, nk, nl, &alpha, &beta,
-      *A,
-      *B,
-      *C,
-      *D);
+  if (dump_code == 1) print_array(ni, nl, D);
 
+  fprintf(stderr, "Check: %f\n", D[ni/2][nl/2]);
 
-
-
-  kernel_2mm (ni, nj, nk, nl,
-      alpha, beta,
-      *tmp,
-      *A,
-      *B,
-      *C,
-      *D);
-
-
-
-
-
-  if (dump_code == 1) print_array(ni, nl, *D);
-
-  // Prevent Dead Code Elimination: Force compiler to use the result
-  // This ensures the kernel computation is not optimized away
-  fprintf(stderr, "Check: %f\n", (*D)[ni/2][nl/2]);
-
-  free((void*)tmp);;
+  free((void*)alpha);;
+  free((void*)beta);;
   free((void*)A);;
   free((void*)B);;
   free((void*)C);;
   free((void*)D);;
+  free((void*)tmp);;
 
   return 0;
 }
+

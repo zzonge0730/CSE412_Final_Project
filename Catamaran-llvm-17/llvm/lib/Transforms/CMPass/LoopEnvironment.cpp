@@ -13,10 +13,53 @@ LoopEnvironment::LoopEnvironment(PDG * pdg, std::vector<BasicBlock *>& exitBlock
         //determine whether the external node is a producer(i.e., live-in)
         bool isProducer = false;
         std::unordered_set<Instruction *> consumerOfLiveInValue;
+        
+        // DEBUG: Check if this is a MoveC metadata variable
+        bool isMetadata = false;
+        if (externalValue && externalValue->hasName()) {
+            std::string name = externalValue->getName().str();
+            if (name.find("_RV_pmd") != std::string::npos) {
+                isMetadata = true;
+                errs() << "DEBUG LoopEnvironment: Found metadata node: " << name << "\n";
+                errs() << "  Type: ";
+                externalValue->getType()->print(errs());
+                errs() << "\n";
+                // Check if it's AllocaInst or GlobalVariable
+                if (isa<AllocaInst>(externalValue)) {
+                    errs() << "  -> AllocaInst (use-after-return risk!)\n";
+                } else if (isa<GlobalVariable>(externalValue)) {
+                    errs() << "  -> GlobalVariable (safe)\n";
+                } else if (isa<Argument>(externalValue)) {
+                    errs() << "  -> Argument (safe)\n";
+                } else {
+                    errs() << "  -> Other type\n";
+                }
+            }
+        }
+        
+        int dataDepCount = 0, memDepCount = 0, ctrlDepCount = 0;
         for (auto edge : externalNode->getOutgoingEdges()) {
+            // DEBUG: Count edge types for metadata
+            if (isMetadata) {
+                if (edge->isDataDependence() && !edge->isMemoryDependence()) {
+                    dataDepCount++;
+                } else if (edge->isMemoryDependence()) {
+                    memDepCount++;
+                } else if (edge->isControlDependence()) {
+                    ctrlDepCount++;
+                }
+            }
             
             //memory and control dependences can be skipped as they do not dictate live-in values
             if (edge->isMemoryDependence() || edge->isControlDependence()) {
+                if (isMetadata) {
+                    errs() << "  -> Skipped edge: ";
+                    if (edge->isMemoryDependence()) errs() << "Memory";
+                    if (edge->isControlDependence()) errs() << "Control";
+                    errs() << " -> ";
+                    edge->getIncomingT()->print(errs());
+                    errs() << "\n";
+                }
                 continue;
             }
             //the current dependence from @externalNode to an instruction
@@ -27,9 +70,22 @@ LoopEnvironment::LoopEnvironment(PDG * pdg, std::vector<BasicBlock *>& exitBlock
             auto consumerOfNewLiveIn = edge->getIncomingT();
             assert(isa<Instruction>(consumerOfNewLiveIn));
             auto consumerOfNewLiveIn_Inst = cast<Instruction>(consumerOfNewLiveIn);
+            
+            if (isMetadata) {
+                errs() << "  -> Data Dependence edge to: ";
+                consumerOfNewLiveIn_Inst->print(errs());
+                errs() << "\n";
+            }
 
             //add the current consumer of the new live-in we have just found
             consumerOfLiveInValue.insert(consumerOfNewLiveIn_Inst);
+        }
+        
+        if (isMetadata) {
+            errs() << "  Edge counts - Data: " << dataDepCount 
+                   << ", Memory: " << memDepCount 
+                   << ", Control: " << ctrlDepCount << "\n";
+            errs() << "  -> isProducer: " << (isProducer ? "YES" : "NO") << "\n";
         }
 
         if (isProducer) {

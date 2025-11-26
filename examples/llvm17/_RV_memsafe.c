@@ -15,6 +15,7 @@ __RV_stat_node *__RV_static_sa;
 __RV_stat_node *__RV_library_sa;
 
 #include <stdio.h>
+#include <string.h>
 
 /*Count of memory safety errors.*/
 size_t __RV_error_count = 0;
@@ -2073,6 +2074,16 @@ void *__RV_check_dpv(const __RV_pmd *pmd,
         unsigned line, unsigned column, const char *ptr_name)
 {
   __RV_status stat = __RV_pmd_get_stat(pmd);
+
+  /* [DEBUG] Log Diet & Spy Code for Catamaran */
+  // Check Heap (4) and Stack/Global (1, etc)
+  if (stat == 4 || stat == 1) {
+      // Catch potential OOB
+      if (ptr < pmd->base || (char*)ptr + size > (char*)pmd->bound) {
+          fprintf(stderr, "[DEBUG OOB DETECTED] %s: Ptr: %p, Base: %p, Bound: %p, Stat: %d, Size: %lu\n", 
+              ptr_name ? ptr_name : "N/A", ptr, pmd->base, pmd->bound, stat, size);
+      }
+  }
 
   /*check pointer validity.*/
   if(ptr == NULL)

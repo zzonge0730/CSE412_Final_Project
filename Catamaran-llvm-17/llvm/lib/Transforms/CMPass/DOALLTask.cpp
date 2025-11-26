@@ -1,8 +1,21 @@
 #include "DOALLTask.h"
 #include "llvm/IR/Function.h" // For FunctionCallee
+#include "llvm/IR/IntrinsicInst.h" // For DbgInfoIntrinsic
 #include "llvm/IR/DataLayout.h" // For DataLayout
 #include "llvm/ADT/SmallVector.h" // For SmallVector
 #include <algorithm>
+
+namespace {
+void stripAllMetadata(Instruction *I) {
+    if (!I) return;
+    SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
+    I->getAllMetadata(MDs);
+    for (auto &MD : MDs) {
+        I->setMetadata(MD.first, nullptr);
+    }
+    I->setDebugLoc(llvm::DebugLoc());
+}
+}
 
 DOALLTask::DOALLTask(uint32_t ID, FunctionType * funcType, Module * M) : loopSeed(std::random_device()()) {
     this->ID = ID;
@@ -154,11 +167,13 @@ BasicBlock * DOALLTask::cloneAndAddBasicBlock (BasicBlock *original, std::functi
     auto cloneBB = this->addBasicBlockStub(original);
     // errs() << "---cloneAddBB--186\n";
     IRBuilder<> builder(cloneBB);
-    for (auto& I : *original) {
+        for (auto& I : *original) {
         if (!filter(&I)) continue;
 
         //add the current instructions to the task
         auto cloneInst = builder.Insert(I.clone());
+        stripAllMetadata(cloneInst);
+        
         this->instructionClones[&I] = cloneInst;
     }
 
@@ -282,65 +297,137 @@ void DOALLTask::genCtorForSpawn(Module * M, Function * wrapperFunc, unsigned cto
 
 }
 
+// Helper function to check if a liveIn is a metadata struct
+bool DOALLTask::isMetadataStruct(Value * liveIn, Type *& structType) const {
+    structType = nullptr;
+    if (AllocaInst *AI = dyn_cast<AllocaInst>(liveIn)) {
+        Type *allocatedType = AI->getAllocatedType();
+        if (StructType *ST = dyn_cast<StructType>(allocatedType)) {
+            // Check if it's a MoveC metadata struct (pattern: _RV_pmd)
+            if (liveIn->hasName()) {
+                std::string name = liveIn->getName().str();
+                if (name.find("_RV_pmd") != std::string::npos) {
+                    structType = ST;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Get the size of a liveIn variable
+uint64_t DOALLTask::getLiveInSize(Value * liveIn, const DataLayout &DL) const {
+    Type *structType = nullptr;
+    if (isMetadataStruct(liveIn, structType)) {
+        // Metadata struct: return struct size
+        return DL.getTypeAllocSize(structType);
+    } else {
+        // Regular pointer: return pointer size (8 bytes for 64-bit)
+        return DL.getPointerSize(0);
+    }
+}
+
 std::vector<Value *> DOALLTask::genSpawnArgs(Module *M, Function * wrapperFunc) {
+    errs() << "DEBUG: Inside genSpawnArgs\n";
     LLVMContext& ctx = this->M->getContext();
     PointerType * voidPtrType = PointerType::get(ctx, 0);
     Type * voidStarTy = voidPtrType;
+    const DataLayout &DL = this->M->getDataLayout();
 
     std::vector<Value *> args{ConstantInt::get(Type::getInt32Ty(ctx), std::uniform_int_distribution<uint32_t>{}(this->loopSeed)), wrapperFunc};
-    std::vector<Value *> packedLiveIns;
-    packedLiveIns.reserve(this->liveInVars.size());
+    
+    // Filter local vars to match splitLoop logic
+    std::vector<Value *> actualLiveIns;
     for (auto liveIn : this->liveInVars) {
-        // errs() << "592Inst: " << *liveIn << "\n";
-        Type * liveInType = liveIn->getType();
-        Value * castArgForNew;
-        // 
-        // filter liveInvars which are needed alloca memory and bitcast related
         if (this->isLocalVarLiveIn(liveIn)) continue;
-        if (liveInType->isPointerTy()) {
-            //just need to bitcast
-            castArgForNew = liveIn;
-            // errs() << "--622\n";
-        } else {
-            // LLVM 14: AllocaInst 생성자 변경 - InsertBefore는 별도로 설정
-            castArgForNew = new AllocaInst(liveInType, 0, "ya_", this->whereToInsertFunc);
-            new StoreInst(liveIn, castArgForNew, this->whereToInsertFunc);
-            // errs() << "--626\n";
-        }
-        // errs() << "castArgForNew: " << *castArgForNew <<"\n";
-        BitCastInst * bcInst = new BitCastInst(castArgForNew, voidStarTy, "yy_", this->whereToInsertFunc);
-        packedLiveIns.push_back(bcInst);
+        actualLiveIns.push_back(liveIn);
     }
-
+    
+    // Calculate total environment size
+    uint64_t totalBytes = 0;
+    for (auto liveIn : actualLiveIns) {
+        // Both regular pointers and metadata pointers take 8 bytes in the env buffer
+        totalBytes += DL.getPointerSize(0);
+    }
+    
     Value *envPtrValue = ConstantPointerNull::get(voidPtrType);
-    if (!packedLiveIns.empty()) {
-        // Use malloc instead of alloca to prevent use-after-return in async tasks
+    if (totalBytes > 0) {
+        // Use runtime slab allocator instead of alloca to prevent use-after-return in async tasks
         Type *sizeT = Type::getInt64Ty(ctx);
-        FunctionCallee mallocFunc = this->M->getOrInsertFunction("malloc", 
+        FunctionCallee allocFunc = this->M->getOrInsertFunction(
+            "__catamaran_alloc_env",
             FunctionType::get(PointerType::get(ctx, 0), {sizeT}, false));
-
-        uint64_t totalBytes = packedLiveIns.size() * 8; // Assuming 64-bit pointers
+        
         Value *sizeVal = ConstantInt::get(sizeT, totalBytes);
+        CallInst *envMalloc = CallInst::Create(allocFunc, {sizeVal}, "cm_spawn_env_malloc", this->whereToInsertFunc);
+        
+        // Track current offset in environment buffer
+        uint64_t currentOffset = 0;
+        
+        for (auto liveIn : actualLiveIns) {
+            Type *structType = nullptr;
+            bool isMeta = isMetadataStruct(liveIn, structType);
 
-        // Call malloc
-        CallInst *envMalloc = CallInst::Create(mallocFunc, {sizeVal}, "cm_spawn_env_malloc", this->whereToInsertFunc);
+            if (isMeta) {
+                // Metadata struct: Deep Copy to Slab
+                // CHANGED: Store metadata VALUE in separate slab allocation, store POINTER in env buffer
+                uint64_t metaSize = DL.getTypeAllocSize(structType);
 
-        for (unsigned idx = 0; idx < packedLiveIns.size(); ++idx) {
-            Value *idxVal = ConstantInt::get(Type::getInt32Ty(ctx), idx);
-            // GEP needs element type (voidStarTy is i8* or opaque)
-            Value *slotPtr = GetElementPtrInst::Create(voidStarTy, envMalloc, idxVal, "cm_spawn_slot", this->whereToInsertFunc);
-            new StoreInst(packedLiveIns[idx], slotPtr, this->whereToInsertFunc);
+                // [Step A] Allocate space for metadata VALUE in the slab
+                Value *metaSizeVal = ConstantInt::get(sizeT, metaSize);
+                CallInst *metaValueBuf = CallInst::Create(allocFunc, {metaSizeVal}, "cm_meta_slab_buf", this->whereToInsertFunc);
+
+                // [Step B] Copy from source stack to slab buffer
+                Type *int8PtrTy = Type::getInt8PtrTy(ctx);
+                Value *metaBufI8 = new BitCastInst(metaValueBuf, int8PtrTy, "cm_meta_buf_i8", this->whereToInsertFunc);
+                Value *srcI8 = new BitCastInst(liveIn, int8PtrTy, "cm_meta_src_i8", this->whereToInsertFunc);
+
+                FunctionCallee copyHelper = this->M->getOrInsertFunction(
+                    "__catamaran_copy_metadata",
+                    FunctionType::get(Type::getVoidTy(ctx), {int8PtrTy, int8PtrTy, sizeT}, false));
+                CallInst::Create(copyHelper, {metaBufI8, srcI8, metaSizeVal}, "", this->whereToInsertFunc);
+
+                // [Step C] Store the POINTER to the slab buffer into the environment buffer
+                Value *offsetVal = ConstantInt::get(Type::getInt64Ty(ctx), currentOffset);
+                Value *slotPtr = GetElementPtrInst::Create(Type::getInt8Ty(ctx), envMalloc, 
+                    {offsetVal}, "cm_env_slot_meta_ptr", this->whereToInsertFunc);
+                
+                // Cast slot to i8** (pointer to pointer)
+                Value *slotPtrCast = new BitCastInst(slotPtr, 
+                    PointerType::get(int8PtrTy, 0), "cm_env_slot_pptr", this->whereToInsertFunc);
+                
+                new StoreInst(metaValueBuf, slotPtrCast, this->whereToInsertFunc);
+            } else {
+                // Regular pointer: store pointer value
+                Type *liveInType = liveIn->getType();
+                Value *castArgForNew = liveIn; 
+                
+                // Calculate slot pointer with byte offset
+                Value *offsetVal = ConstantInt::get(Type::getInt64Ty(ctx), currentOffset);
+                Value *slotPtr = GetElementPtrInst::Create(Type::getInt8Ty(ctx), envMalloc, 
+                    {offsetVal}, "cm_spawn_slot_ptr", this->whereToInsertFunc);
+                // Cast to pointer type for store
+                BitCastInst *slotPtrCast = new BitCastInst(slotPtr, 
+                    PointerType::get(liveInType, 0), "cm_spawn_slot", this->whereToInsertFunc);
+                new StoreInst(castArgForNew, slotPtrCast, this->whereToInsertFunc);
+            }
+            
+            currentOffset += DL.getPointerSize(0);
         }
+        
         envPtrValue = envMalloc;
     }
 
     args.push_back(envPtrValue);
     errs() << "argsize: " << args.size() << "\n";
+    errs() << "DEBUG: Packed " << actualLiveIns.size() << " live-ins (total " << totalBytes << " bytes)\n";
 
     return args;
 }
 
 namespace {
+
 void eraseInstructionSafely(Instruction *Inst) {
     if (Inst == nullptr) return;
     if (!Inst->use_empty()) {
@@ -571,6 +658,148 @@ void DOALLTask::splitLoop() {
 
     auto& ctx = this->M->getContext();
     Type * voidStarTy = PointerType::get(ctx, 0);
+    
+    // Find the original function containing this loop
+    Function *origFunc = nullptr;
+    if (!loopStructure->getBasicBlocks().empty()) {
+        BasicBlock *firstBB = *loopStructure->getBasicBlocks().begin();
+        origFunc = firstBB->getParent();
+    }
+    
+    // Build metadata-to-pointer mapping for MoveC
+    // MoveC functions typically have pattern: <name>_pmd (metadata) and <name> (pointer)
+    // Example: p7_pmd (metadata) -> p7 (pointer)
+    // 
+    // IMPORTANT: In MoveC, the actual loop is in kernel_2mm, but metadata comes from
+    // the wrapper function _RV_kernel_2mm. We need to find the wrapper function.
+    std::unordered_map<Value *, Value *> ptrToMetadata;
+    Function *metadataSourceFunc = origFunc;
+    
+    // Try to find _RV_ wrapper function if origFunc doesn't have metadata args
+    if (origFunc && origFunc->getName().startswith("_RV_")) {
+        metadataSourceFunc = origFunc; // Already the wrapper
+    } else if (origFunc) {
+        // Look for _RV_ wrapper function that calls origFunc
+        std::string wrapperName = "_RV_" + origFunc->getName().str();
+        metadataSourceFunc = this->M->getFunction(wrapperName);
+        if (!metadataSourceFunc) {
+            // Try alternative: find caller that has _RV_ prefix and metadata args
+            for (auto &F : *this->M) {
+                if (F.getName().startswith("_RV_") && F.getName().contains(origFunc->getName())) {
+                    // Check if this function has metadata arguments
+                    bool hasMetadataArgs = false;
+                    for (auto &arg : F.args()) {
+                        std::string argName = arg.getName().str();
+                        if (argName.length() > 4 && argName.substr(argName.length() - 4) == "_pmd") {
+                            hasMetadataArgs = true;
+                            break;
+                        }
+                    }
+                    if (hasMetadataArgs) {
+                        metadataSourceFunc = &F;
+                        errs() << "DEBUG: Found MoveC wrapper function: " << metadataSourceFunc->getName() << "\n";
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (metadataSourceFunc) {
+        std::unordered_map<std::string, Argument *> metadataArgs;
+        std::unordered_map<std::string, Argument *> ptrArgs;
+        
+        // First pass: collect all arguments from wrapper function
+        for (auto &arg : metadataSourceFunc->args()) {
+            std::string argName = arg.getName().str();
+            // Check for _pmd suffix (e.g., p7_pmd)
+            if (argName.length() > 4 && argName.substr(argName.length() - 4) == "_pmd") {
+                // This is a metadata argument
+                std::string ptrName = argName.substr(0, argName.length() - 4); // Remove "_pmd" suffix
+                metadataArgs[ptrName] = &arg;
+                errs() << "DEBUG: Found metadata arg in wrapper: " << argName << " -> " << ptrName << "\n";
+            } else if (arg.getType()->isPointerTy() && !argName.empty()) {
+                // This could be a pointer argument
+                ptrArgs[argName] = &arg;
+            }
+        }
+        
+        // Second pass: match metadata to pointers
+        for (auto &pair : metadataArgs) {
+            const std::string &ptrName = pair.first;
+            Argument *metadataArg = pair.second;
+            
+            // Try exact match
+            if (ptrArgs.find(ptrName) != ptrArgs.end()) {
+                ptrToMetadata[ptrArgs[ptrName]] = metadataArg;
+                errs() << "DEBUG: Matched metadata " << metadataArg->getName() 
+                       << " to pointer " << ptrArgs[ptrName]->getName() << "\n";
+            }
+        }
+        
+        // Add missing metadata to liveInVars
+        // Strategy: Find metadata alloca in origFunc and add them to liveInVars
+        // In MoveC, metadata is created as alloca in the function, but it's actually
+        // initialized from the wrapper function's arguments via global table
+        if (origFunc) {
+            errs() << "DEBUG: Searching for metadata alloca in function: " << origFunc->getName() << "\n";
+            int metadataAllocaCount = 0;
+            // Find all metadata alloca in origFunc
+            for (auto &BB : *origFunc) {
+                for (auto &I : BB) {
+                    if (AllocaInst *AI = dyn_cast<AllocaInst>(&I)) {
+                        if (AI->hasName()) {
+                            std::string name = AI->getName().str();
+                            // Check if it's a metadata alloca (pattern: _RV_pmd_*)
+                            if (name.find("_RV_pmd") != std::string::npos) {
+                                metadataAllocaCount++;
+                                errs() << "DEBUG: Found metadata alloca: " << name << "\n";
+                                // Check if this alloca is used in check functions within the loop
+                                bool usedInLoop = false;
+                                int checkUseCount = 0;
+                                for (auto *U : AI->users()) {
+                                    if (Instruction *UseInst = dyn_cast<Instruction>(U)) {
+                                        if (CallInst *CI = dyn_cast<CallInst>(UseInst)) {
+                                            if (CI->getCalledFunction()) {
+                                                std::string funcName = CI->getCalledFunction()->getName().str();
+                                                if (funcName.find("__RV_check") != std::string::npos ||
+                                                    funcName.find("_RV_check") != std::string::npos) {
+                                                    checkUseCount++;
+                                                    // Check if this instruction is in the loop
+                                                    if (loopStructure->isIncluded(UseInst)) {
+                                                        usedInLoop = true;
+                                                        errs() << "  -> Used in check function within loop: " << funcName << "\n";
+                                                        break;
+                                                    } else {
+                                                        errs() << "  -> Used in check function but outside loop: " << funcName << "\n";
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                errs() << "  -> Total check function uses: " << checkUseCount << ", usedInLoop: " << (usedInLoop ? "YES" : "NO") << "\n";
+                                
+                                // Add metadata alloca if it's used in check functions (even if outside loop,
+                                // because it might be used in nested loops or the check might be in a different BB)
+                                // Also, if it's used at all in check functions, it's likely needed
+                                if (checkUseCount > 0 && !this->hasLiveInVar(AI)) {
+                                    this->liveInVars.push_back(AI);
+                                    errs() << "Added MoveC metadata alloca to liveInVars: " << name 
+                                           << " (check uses: " << checkUseCount << ", inLoop: " << (usedInLoop ? "YES" : "NO") << ")\n";
+                                } else if (this->hasLiveInVar(AI)) {
+                                    errs() << "  -> Already in liveInVars\n";
+                                } else if (checkUseCount == 0) {
+                                    errs() << "  -> NOT adding (no check function uses)\n";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            errs() << "DEBUG: Total metadata alloca found: " << metadataAllocaCount << "\n";
+        }
+    }
     
     std::vector<Value *> nonLocalLiveIn;
     for (auto livein : this->liveInVars) {
@@ -814,7 +1043,10 @@ void DOALLTask::splitLoop() {
         IRBuilder<> builder(cloneBB);
         for (auto& I : *BB) {
             if (isa<BranchInst>(&I)) continue;
+            if (isa<DbgInfoIntrinsic>(&I)) continue;
             auto cloneInst = builder.Insert(I.clone());
+            stripAllMetadata(cloneInst);
+
             instAdded.insert(cloneInst);
             this->instructionClones[&I] = cloneInst;
         } 
@@ -856,6 +1088,8 @@ void DOALLTask::splitLoop() {
         auto terminator = BB->getTerminator();
         // errs() << "SplitLoop 752" << "\n";
         auto cloneTerminator = builder.Insert(terminator->clone());
+        stripAllMetadata(cloneTerminator);
+
         // errs() << "SplitLoop 753" << "\n";
         instAdded.insert(cloneTerminator);
         // errs() << "SplitLoop 754" << "\n";
@@ -1003,33 +1237,76 @@ void DOALLTask::splitLoop() {
     // LLVM 14: getArgumentList() → args()
     auto envArgIt = wrapperFunc->arg_begin();
     Value * envArg = &*envArgIt;
-    Type * voidPtrPtrTy = PointerType::get(voidStarTy, 0);
-    Value * envBase = new BitCastInst(envArg, voidPtrPtrTy, "cm_env_base", wrapperFuncEntryBB);
+    // Note: We now use byte offsets, so we don't need to cast to voidPtrPtrTy
 
     std::vector<Value *> wrapperFuncCastArgs;
     unsigned wrapperIdx = 0;
+    uint64_t currentOffset = 0;
+    const DataLayout &DL = this->M->getDataLayout();
+    
+    // nonLocalLiveIn is already declared above in splitLoop()
+    
     for (auto newLoopFuncArgIt = newLoopFunc->arg_begin();
         newLoopFuncArgIt != newLoopFunc->arg_end(); ++newLoopFuncArgIt, ++wrapperIdx) {
         Type * tmpType = newLoopFuncArgIt->getType();
-        Value * idxVal = ConstantInt::get(Type::getInt32Ty(ctx), wrapperIdx);
-        Value * slotPtr = GetElementPtrInst::Create(voidStarTy, envBase, idxVal, "cm_env_slot", wrapperFuncEntryBB);
-        Value * rawPtr = new LoadInst(voidStarTy, slotPtr, "", wrapperFuncEntryBB);
-        if (tmpType->isPointerTy()) {
-            BitCastInst * bc = new BitCastInst(rawPtr, tmpType, "", wrapperFuncEntryBB);
-            wrapperFuncCastArgs.push_back(bc);
+        
+        // Find corresponding liveIn
+        Value *correspondingLiveIn = nullptr;
+        if (wrapperIdx < nonLocalLiveIn.size()) {
+            correspondingLiveIn = nonLocalLiveIn[wrapperIdx];
+        }
+        
+        Type *structType = nullptr;
+        bool isMeta = (correspondingLiveIn && isMetadataStruct(correspondingLiveIn, structType));
+        
+        if (isMeta) {
+            // Metadata struct: create local alloca and load struct from environment
+            // 1. Create local alloca for metadata struct
+            AllocaInst *localMeta = new AllocaInst(structType, 0, 
+                correspondingLiveIn->getName() + "_local", wrapperFuncEntryBB);
+            
+            // 2. Calculate slot pointer with byte offset
+            Value *offsetVal = ConstantInt::get(Type::getInt64Ty(ctx), currentOffset);
+            Value *slotPtr = GetElementPtrInst::Create(Type::getInt8Ty(ctx), envArg, 
+                {offsetVal}, "cm_env_slot_meta_ptr", wrapperFuncEntryBB);
+
+            // CHANGED: Unpack POINTER from env buffer, then load struct from that pointer
+            
+            // Cast to structType** (pointer to pointer to struct)
+            BitCastInst *slotPtrCast = new BitCastInst(slotPtr, 
+                PointerType::get(PointerType::get(structType, 0), 0), "cm_env_slot_pptr", wrapperFuncEntryBB);
+            
+            // 3. Load pointer to struct (from slab)
+            LoadInst *metaPtr = new LoadInst(PointerType::get(structType, 0), slotPtrCast, "meta.ptr.load", wrapperFuncEntryBB);
+
+            // 4. Load struct from that pointer
+            LoadInst *structVal = new LoadInst(structType, metaPtr, "meta.load", wrapperFuncEntryBB);
+            
+            // 5. Store to local alloca
+            new StoreInst(structVal, localMeta, wrapperFuncEntryBB);
+            
+            // 6. Use local alloca as argument
+            wrapperFuncCastArgs.push_back(localMeta);
+            
+            currentOffset += DL.getPointerSize(0);
         } else {
-            BitCastInst * bc = new BitCastInst(rawPtr, PointerType::get(tmpType, 0), "", wrapperFuncEntryBB);
-            LoadInst * load = new LoadInst(tmpType, bc, "", wrapperFuncEntryBB);
-            wrapperFuncCastArgs.push_back(load);
+            // Regular pointer: use existing logic
+            Value *offsetVal = ConstantInt::get(Type::getInt64Ty(ctx), currentOffset);
+            Value *slotPtr = GetElementPtrInst::Create(Type::getInt8Ty(ctx), envArg, 
+                {offsetVal}, "cm_env_slot_ptr", wrapperFuncEntryBB);
+            // Cast to pointer type for load
+            BitCastInst *slotPtrCast = new BitCastInst(slotPtr, 
+                PointerType::get(tmpType, 0), "cm_env_slot", wrapperFuncEntryBB);
+            Value *rawPtr = new LoadInst(tmpType, slotPtrCast, "", wrapperFuncEntryBB);
+            wrapperFuncCastArgs.push_back(rawPtr);
+            
+            currentOffset += DL.getPointerSize(0);
         }
     }
 
     // add call newLoopFunc
     CallInst * callNewLoopFuncInst = CallInst::Create(newLoopFunc, wrapperFuncCastArgs, "", wrapperFuncEntryBB);
-    FunctionCallee freeFunc = this->M->getOrInsertFunction(
-        "free",
-        FunctionType::get(Type::getVoidTy(ctx), {voidStarTy}, false));
-    CallInst::Create(freeFunc, {envArg}, "", wrapperFuncEntryBB);
+    // Removed free(envArg) because we use slab allocator which is reset at sync points
     ReturnInst::Create(ctx, nullptr, wrapperFuncEntryBB);
 
     //constructor of spawnable function
@@ -1040,7 +1317,9 @@ void DOALLTask::splitLoop() {
 
     //create thread
 
+    errs() << "DEBUG: calling genSpawnArgs\n";
     std::vector<Value *> needArgs = genSpawnArgs(this->M, wrapperFunc);
+    errs() << "DEBUG: genSpawnArgs returned\n";
     errs() << "needArgSize: " << needArgs.size() << "\n";
     if (needArgs.size() != 3) {
         errs() << ">>>Num of NeedArgs is wrong...\n";
@@ -1064,8 +1343,17 @@ void DOALLTask::splitLoop() {
     Value * id = needArgs[0]; 
     // LLVM 14: CallInst::Create() API 변경 - FunctionCallee 사용
     FunctionCallee joinCallee(cast<Function>(this->joinFunc));
+    FunctionCallee resetSlabCallee = this->M->getOrInsertFunction(
+        "__catamaran_reset_slab",
+        FunctionType::get(Type::getVoidTy(ctx), false));
+    bool insertedReset = false;
     for (auto *point : this->joinPoints) {
         CallInst::Create(joinCallee, {id}, "", point);
+        CallInst::Create(resetSlabCallee, {}, "", point);
+        insertedReset = true;
+    }
+    if (!insertedReset) {
+        CallInst::Create(resetSlabCallee, {}, "", this->whereToInsertFunc);
     }
     
     #if 0

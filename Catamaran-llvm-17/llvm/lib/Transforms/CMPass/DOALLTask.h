@@ -163,6 +163,10 @@ private:
     std::unordered_map<Instruction *, std::set<Instruction *>> doNotParallelCodes;
     bool isDoNotParallelCodes(Instruction * inst);
     bool IsForRelated(Instruction * inst);
+    
+    // Helper function to check if a liveIn is a metadata struct
+    bool isMetadataStruct(Value * liveIn, Type *& structType) const;
+    uint64_t getLiveInSize(Value * liveIn, const DataLayout &DL) const;
 };
 
 #endif

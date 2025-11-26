@@ -6,6 +6,8 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
+#include <vector>
+#include <cstring>
 
 #include <unistd.h>
 
@@ -21,6 +23,121 @@
 static constexpr unsigned numThreads{ NUM_THREADS };
 
 using namespace std;
+
+// ==========================================
+// Slab Allocator for Environment Buffers
+// ==========================================
+// Optimized to remove malloc contention in main thread.
+// Only the main thread (producer) calls __catamaran_alloc_env.
+// Workers only read from this memory.
+// Reset happens at TaskGroup::wait().
+
+// 64MB Slab size (adjust if needed for larger inputs)
+static const size_t SLAB_SIZE = 64 * 1024 * 1024;
+
+// Thread-local slab for the main thread
+// Note: In DOALL, usually only the main thread spawns tasks.
+// If nested parallelism is used, each producer needs its own slab.
+struct EnvSlab {
+    char* buffer;
+    size_t current_offset;
+    size_t capacity;
+
+    EnvSlab() : buffer(nullptr), current_offset(0), capacity(0) {}
+
+    void init(size_t size) {
+        if (!buffer) {
+            buffer = (char*)malloc(size);
+            if (!buffer) {
+                perror("Failed to allocate EnvSlab");
+                exit(1);
+            }
+            capacity = size;
+            current_offset = 0;
+            // DEBUG(cerr << "EnvSlab initialized: " << size << " bytes\n");
+        }
+    }
+
+    void reset() {
+        current_offset = 0;
+        // DEBUG(cerr << "EnvSlab reset\n");
+    }
+
+    void* alloc(size_t size) {
+        // 8-byte alignment
+        size_t aligned_size = (size + 7) & ~7;
+        
+        if (current_offset + aligned_size > capacity) {
+            fprintf(stderr, "EnvSlab overflow! Need %lu, have %lu left. Falling back to malloc.\n", 
+                    aligned_size, capacity - current_offset);
+            // Fallback to malloc if slab is full (should be rare)
+            return malloc(size);
+        }
+
+        void* ptr = buffer + current_offset;
+        current_offset += aligned_size;
+        return ptr;
+    }
+    
+    ~EnvSlab() {
+        if (buffer) free(buffer);
+    }
+};
+
+// Global slab instance (assuming single producer for now)
+// For true thread-safety with multiple producers, use thread_local
+static thread_local EnvSlab mainThreadSlab;
+
+extern "C" {
+    // Runtime function called by generated code instead of malloc
+    void* __catamaran_alloc_env(size_t size) {
+        // Ensure initialized (lazy init)
+        if (!mainThreadSlab.buffer) {
+            mainThreadSlab.init(SLAB_SIZE);
+            fprintf(stderr, "DEBUG: Slab initialized: %p\n", mainThreadSlab.buffer);
+        }
+        void* ptr = mainThreadSlab.alloc(size);
+        fprintf(stderr, "DEBUG: Alloc size %lu -> %p (offset %lu)\n", size, ptr, mainThreadSlab.current_offset);
+        return ptr;
+    }
+    
+    // Helper to reset slab (can be exposed if needed, but we'll call it in wait())
+    void __catamaran_reset_slab() {
+        if (mainThreadSlab.buffer) {
+            mainThreadSlab.reset();
+        }
+    }
+
+    // NULL-safe metadata copy helper
+    void __catamaran_copy_metadata(void *dest, const void *src, size_t size) {
+        if (!dest) return;
+        if (!src) {
+            memset(dest, 0, size);
+        } else {
+            // Manual copy with volatile to prevent vectorization
+            volatile char* d = (volatile char*)dest;
+            const volatile char* s = (const volatile char*)src;
+            for (size_t i = 0; i < size; ++i) {
+                d[i] = s[i];
+            }
+            
+            // Debug metadata content (assuming __RV_pmd layout: { ptr, ptr, ptr, i8 })
+            if (size >= 32) {
+                unsigned long* lptr = (unsigned long*)dest;
+                unsigned char* bptr = (unsigned char*)dest;
+                unsigned long* slptr = (unsigned long*)src;
+                unsigned char* sbptr = (unsigned char*)src;
+                
+                fprintf(stderr, "DEBUG: Meta Copy: Base=0x%lx, Bound=0x%lx, Key=0x%lx, Stat=%d\n", 
+                    lptr[0], lptr[1], lptr[2], bptr[24]);
+                fprintf(stderr, "DEBUG: Src Meta:  Base=0x%lx, Bound=0x%lx, Key=0x%lx, Stat=%d\n", 
+                    slptr[0], slptr[1], slptr[2], sbptr[24]);
+            }
+        }
+    }
+}
+
+// ==========================================
 
 // global mutex for writting to the console
 //DEBUG(static mutex console_mutex);

@@ -12,12 +12,20 @@ examples/2mm.c:82:35: error: dereferenced pointer 'A[i][k]' ... [spatial error]
 double free or corruption (!prev)
 ```
 
-**원인**: MoveC 3.x의 메모리 접근 검사기가 큰 입력(128×128)뿐 아니라 현재는 작은 입력에서도 경계를 벗어났다고 판단한다. Catamaran 변환과 무관하게 원본 MoveC 바이너리에서도 동일한 경고가 발생한다.
+**원인**: **Catamaran이 spawn 시 MoveC 메타데이터(__RV_pmd)를 불완전하게 전달**하기 때문입니다. 
+
+**검증 결과**:
+- **MoveC β (Sequential)**: `./MoveC-2mm 0 128 128 128 128` → 경고 없이 정상 종료
+- **Catamaran γ (Parallel)**: `./CM-MoveC-2mm 0 64 64 64 64` → 6144개 spatial error
+
+원본 함수(`_RV_kernel_2mm`)는 5개 배열(tmp, A, B, C, D)의 메타데이터를 모두 받지만, Catamaran이 생성한 루프 함수(`_loop_func_76`)는 D 메타데이터만 받습니다. spawn된 함수에서 tmp, A, B, C에 접근할 때 메타데이터가 없어 MoveC가 경계 정보를 찾지 못해 spatial error가 발생합니다.
+
+**상세 분석**: [docs/llvm17-port/MOVEC_METADATA_ISSUE.md](llvm17-port/MOVEC_METADATA_ISSUE.md) 참조
 
 **해결 방법**:
-- 오류 메시지는 런타임 자체의 한계이므로 그대로 기록해 두고 참고용 성능 수치만 확인한다.
-- 스모크 테스트가 필요하면 `./CM-MoveC-2mm 16 16 16 16 0` 처럼 입력 크기를 줄여 실행한다.
-- 다른 PolyBench 커널 또는 ASAN 예제로 교차 검증한다.
+- **임시 우회**: 작은 입력(`0 64 64 64 64`) 사용 시 경고만 발생하고 실행은 완료됨
+- **근본 해결**: `DOALLTask::genSpawnArgs()`에서 배열 포인터의 메타데이터도 함께 전달하도록 수정 필요 (현재 미구현)
+- **대안**: ASAN 경로 사용 (ASAN은 메타데이터 의존성이 없어서 정상 작동)
 
 ### 2. MoveC γ 실행이 즉시 종료됨
 

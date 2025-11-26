@@ -13,7 +13,7 @@
 
 #define ENABLELOOP 1
 
-#define ENABLELOOPFREE 1
+#define ENABLELOOPFREE 0
 
 // LLVM 14: PassBuilder에 등록하는 함수
 extern "C" ::llvm::PassPluginLibraryInfo
@@ -207,7 +207,16 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
             StringRef funcName = loopFunc->getName();
 
             // Skip certain problematic functions
-            if (funcName == "_RV_main" || funcName == "__RV_global_clear_code" || funcName == "init_array") {
+            // Filter out MoveC runtime and standard library wrappers (starting with _RV_ or __RV_)
+            // But allow benchmark kernels (usually containing "kernel" or "main")
+            if (funcName.startswith("__RV_") || 
+                (funcName.startswith("_RV_") && !funcName.contains("kernel") && !funcName.contains("main")) ||
+                funcName == "print_array" || funcName.contains("print")) {
+                errs() << "DEBUG: Skipping problematic function: " << funcName << "\n";
+                continue;
+            }
+            
+            if (funcName == "__RV_global_clear_code" || funcName == "init_array") {
                 errs() << "DEBUG: Skipping problematic function: " << funcName << "\n";
                 continue;
             }
@@ -239,6 +248,7 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
             errs().flush();
 
             if (nestingLevel == 1) {
+                errs() << "DEBUG: Nesting level 1, creating task...\n"; errs().flush();
                 for (auto BB : ls->getBasicBlocks()) {
                     // errs() << "---BB: " << *BB << "\n";
                     allLoopBasicBlocks.insert(BB);
@@ -255,10 +265,22 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                 FunctionType * funcType = FunctionType::get(Type::getVoidTy(ctx), funcArgTyeps, false);
                 
                 //create a task
+                errs() << "DEBUG: new DOALLTask\n"; errs().flush();
                 DOALLTask * task = new DOALLTask(loopID, funcType, this->program);
+                
                 BasicBlock * loopPreHeader = ls->getPreHeader();
+                if (!loopPreHeader) {
+                    errs() << "DEBUG: Loop preheader is NULL!\n";
+                    continue;
+                }
+                
                 //record where to insert the loop function
                 Instruction * whereToInsertFunc = loopPreHeader->getTerminator();
+                if (!whereToInsertFunc) {
+                    errs() << "DEBUG: Preheader terminator is NULL!\n";
+                    continue;
+                }
+                
                 BasicBlock * loopHeader = ls->getHeader();
                 // errs() << "whereToInsertFunc Before: " << *whereToInsertFunc << "\n";
                 task->setWhereToInsertFunc(whereToInsertFunc);
@@ -267,6 +289,7 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                 task->setJoinFunc(joinFunc);
                 //set join Points, before return this function there should be join points for each parallel loop
                 std::unordered_set<Instruction *> joinPoints;
+                errs() << "DEBUG: Finding join points...\n"; errs().flush();
                 for (BasicBlock& BB : *loopHeader->getParent()) {
                     for (Instruction& inst : BB) {
                         if (isa<ReturnInst>(&inst)) {    
@@ -280,24 +303,38 @@ PreservedAnalyses Loops::run(Module &M, ModuleAnalysisManager &AM) {
                 //copy loop header
                 task->setLoopHeader(loopHeader);
                 
+                errs() << "DEBUG: Task setup done, starting liveIn analysis\n"; errs().flush();
+                
 
 
                 
                 std::unordered_map<Value *, Value *> liveInInitVal;
                 std::unordered_map<Value *, std::unordered_set<Instruction *>> bitcastLiveInVarRelated;
                 // get liveIn Vars
+                errs() << "DEBUG Loops: Collecting liveIn vars from LoopEnvironment...\n";
+                int metadataCount = 0;
                 for (auto envIndex : loop->loopEnviroment->getEnvIndicesOfLiveInVars()) {
-                    loop->loopEnviroment->producerAT(envIndex)->print(errs()
-                    << "LiveIn Loop env, producer:\t");
+                    Value *liveIn = loop->loopEnviroment->producerAT(envIndex);
+                    liveIn->print(errs() << "LiveIn Loop env, producer:\t");
                     errs() << "\n";
-                    task->addLiveInVar(loop->loopEnviroment->producerAT(envIndex));
+                    
+                    // DEBUG: Check if metadata is in LoopEnvironment
+                    if (liveIn->hasName()) {
+                        std::string name = liveIn->getName().str();
+                        if (name.find("_RV_pmd") != std::string::npos) {
+                            metadataCount++;
+                            errs() << "  -> Metadata found in LoopEnvironment! (" << name << ")\n";
+                        }
+                    }
+                    
+                    task->addLiveInVar(liveIn);
 
                     // analysis which variable we can't simply used in the new loop func
                     // and need further alloca a block of extra memory and init it
-                    Value * liveIn = loop->loopEnviroment->producerAT(envIndex);
                     //new: more effective way to get the needed val, instead of naively traverse
                     //fetch the DGNode
-                    auto fromNode = loopFuncPDG->fetchNode(liveIn);
+                    Value * liveInForAnalysis = liveIn;
+                    auto fromNode = loopFuncPDG->fetchNode(liveInForAnalysis);
                     if (fromNode != nullptr) {
                         for (auto &edge : fromNode->getOutgoingEdges()) {
                             if (edge->isMustDependence() && edge->dataDepToString()=="RAW") {

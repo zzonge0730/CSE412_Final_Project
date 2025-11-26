@@ -60,9 +60,9 @@ docker build -f docker/Dockerfile.llvm34 -t catamaran:llvm34 .
 ## 알려진 이슈
 
 - Catamaran 바이너리는 Docker 컨테이너 안에서 빌드/실행했을 때만 검증되었습니다. 컨테이너 밖에서 실행하면 필요한 라이브러리 및 경로가 달라 런타임 에러가 발생할 수 있습니다.
-- MoveC 런타임이 2mm 예제의 큰 입력(예: 128×128)에서 공간 오류를 보고합니다. 현재는 작은 입력(예: 16×16)에서도 동일 경고가 발생하므로 결과는 참고용입니다.
-- MoveC γ 실행은 현재 Docker에서 프로세스가 즉시 종료되어 벤치마크 결과를 얻지 못했습니다. 원인 규명을 위해 입력 축소, `dmesg` 확인, ThreadPool 로깅 등 추가 조사가 필요합니다.
-- ASAN β/γ 파이프라인은 LLVM 17용 도구체인 연결 전이라 아직 실행되지 않았습니다.
+- **MoveC γ Spatial Errors**: Catamaran이 spawn 시 MoveC 메타데이터(__RV_pmd)를 불완전하게 전달하여 발생. MoveC β(Sequential)는 정상 작동하지만 Catamaran γ에서만 spatial error 발생. 상세 분석: [docs/llvm17-port/MOVEC_METADATA_ISSUE.md](docs/llvm17-port/MOVEC_METADATA_ISSUE.md)
+- MoveC γ는 작은 입력(`0 64 64 64 64`)에서는 경고만 발생하고 실행 완료되지만, 큰 입력에서는 `double free or corruption`으로 Abort됩니다.
+- **ASAN γ**: LLVM 17에서 정상 작동 확인됨 (32/128 입력 모두 정상 종료).
 
 ## 프로젝트 구조
 

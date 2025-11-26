@@ -418,6 +418,7 @@ void kernel_2mm(int ni, int nj, int nk, int nl,
 {
 __RV_stat_node *__RV_stack_sa = __RV_stat_node_create(__RV_stack, 1);
 unsigned char _RV_ret_flag = 0;
+  fprintf(stderr, "[DEBUG] kernel_2mm function body entered\n");
 unsigned char _RV_bc_flag_110023726922312 = 0;
 unsigned char _RV_bc_flag_110023726922280 = 0;
 unsigned char _RV_bc_flag_110023726922176 = 0;
@@ -440,6 +441,7 @@ __RV_pmd *_RV_param_pmds = (
   int i, j, k;
 
 /*#pragma scop*/
+  fprintf(stderr, "[DEBUG] First loop started (tmp initialization)\n");
 
   for (i = 0; i < ni; i++)
     {
@@ -474,18 +476,25 @@ _RV_bc_flag_110023726922312 = 0;
 break;
 }
 if(_RV_bc_flag_110023726922312 == 2) _RV_bc_flag_110023726922312 = 0;
+  fprintf(stderr, "[DEBUG] First loop finished\n");
 }
 
+  fprintf(stderr, "[DEBUG] Second loop about to start\n");
   for (i = 0; i < ni; i++)
     {
 for (j = 0; j < nl; j++)
+      fprintf(stderr, "[DEBUG] j loop started, i=%d, j=%d\n", i, j);
     {
       D[__RV_check_dpv_ss(&_RV_pmd_D_110023726915168, D, i, sizeof(double [nl]), "examples/2mm.c", "kernel_2mm", 87, 9, "D[i]")][__RV_check_dpv_ss(&_RV_pmd_D_110023726915168, D[i], j, sizeof(double), "examples/2mm.c", "kernel_2mm", 87, 12, "D[i][j]")] *= beta;
+      fprintf(stderr, "--- BEFORE OOB ACCESS i=%d, j=%d ---\n", i, j);
       for (k = 0; k < nj; ++k)
         {
       {
-double oob_val = tmp[__RV_check_dpv_ss(&_RV_pmd_tmp_110023726912992, tmp, i, sizeof(double [nj]), "examples/2mm.c", "kernel_2mm", 89, 24, "tmp[i]")][__RV_check_dpv_ss(&_RV_pmd_tmp_110023726912992, tmp[i], k + 1, sizeof(double), "examples/2mm.c", "kernel_2mm", 89, 27, "tmp[i][k+1]")];
-oob_guard += oob_val;
+      volatile int bad_offset = 99999999;
+      double oob_val = tmp[__RV_check_dpv_ss(&_RV_pmd_tmp_110023726912992, tmp, i, sizeof(double [nj]), "examples/2mm.c", "kernel_2mm", 89, 24, "tmp[i]")][__RV_check_dpv_ss(&_RV_pmd_tmp_110023726912992, tmp[i], k + bad_offset, sizeof(double), "examples/2mm.c", "kernel_2mm", 89, 27, "tmp[i][k+bad_offset]")];
+      oob_guard += oob_val;
+D[__RV_check_dpv_ss(&_RV_pmd_D_110023726915168, D, i, sizeof(double [nl]), "examples/2mm.c", "kernel_2mm", 89, 11, "D[i]")][__RV_check_dpv_ss(&_RV_pmd_D_110023726915168, D[i], j, sizeof(double), "examples/2mm.c", "kernel_2mm", 89, 14, "D[i][j]")] += oob_val * C[__RV_check_dpv_ss(&_RV_pmd_C_110023726914624, C, k, sizeof(double [nj]), "examples/2mm.c", "kernel_2mm", 89, 34, "C[k]")][__RV_check_dpv_ss(&_RV_pmd_C_110023726914624, C[k], j, sizeof(double), "examples/2mm.c", "kernel_2mm", 89, 37, "C[k][j]")];
+fprintf(stderr, "--- AFTER OOB ACCESS i=%d, j=%d, k=%d ---\n", i, j, k);
 D[__RV_check_dpv_ss(&_RV_pmd_D_110023726915168, D, i, sizeof(double [nl]), "examples/2mm.c", "kernel_2mm", 89, 11, "D[i]")][__RV_check_dpv_ss(&_RV_pmd_D_110023726915168, D[i], j, sizeof(double), "examples/2mm.c", "kernel_2mm", 89, 14, "D[i][j]")] += oob_val * C[__RV_check_dpv_ss(&_RV_pmd_C_110023726914624, C, k, sizeof(double [nj]), "examples/2mm.c", "kernel_2mm", 89, 34, "C[k]")][__RV_check_dpv_ss(&_RV_pmd_C_110023726914624, C[k], j, sizeof(double), "examples/2mm.c", "kernel_2mm", 89, 37, "C[k][j]")];
       }
 _RV_lbl_110023726924520:
@@ -532,6 +541,7 @@ return;
 static void _RV_kernel_2mm(__RV_pmd *p7_pmd, __RV_pmd *p8_pmd, __RV_pmd *p9_pmd, __RV_pmd *p10_pmd, __RV_pmd *p11_pmd, int p1, int p2, int p3, int p4, double p5, double p6, double (*p7)[p2], double (*p8)[p3], double (*p9)[p2], double (*p10)[p2], double (*p11)[p4])
 {
   __RV_fmd_tbl_create((__RV_func_addr)kernel_2mm, 5);
+  fprintf(stderr, "[DEBUG] _RV_kernel_2mm wrapper called\n");
   __RV_fmd_tbl_update_pmd((__RV_func_addr)kernel_2mm, 0, p7_pmd);
   __RV_fmd_tbl_update_pmd((__RV_func_addr)kernel_2mm, 1, p8_pmd);
   __RV_fmd_tbl_update_pmd((__RV_func_addr)kernel_2mm, 2, p9_pmd);
@@ -587,6 +597,7 @@ __RV_pmd_var_update_argv(argc, &_RV_pmd_argv_110023726924960, argv)
 
 
 
+  fprintf(stderr, "[DEBUG] About to call kernel_2mm\n");
   _RV_kernel_2mm (&_RV_pmd_tmp_110023726928288, &_RV_pmd_A_110023726930032, &_RV_pmd_B_110023726931712, &_RV_pmd_C_110023726933392, &_RV_pmd_D_110023726935072, ni, nj, nk, nl,
       alpha, beta,
       *(double (*)[ni][nj])__RV_check_dpv(&_RV_pmd_tmp_110023726928288, tmp, sizeof(double [ni][nj]), "examples/2mm.c", "main", 125, 8, "tmp"),
@@ -634,8 +645,10 @@ return _RV_ret_val;
 int main(int argc, char **argv)
 {
   int ret_val;
+  fprintf(stderr, "[DEBUG] Program started\n");
   __RV_global_init_code();
   ret_val = _RV_main(argc, argv);
+  fprintf(stderr, "[DEBUG] Final Check: oob_guard=%f\n", oob_guard);
   __RV_print_error_count();
   return ret_val;
 }
