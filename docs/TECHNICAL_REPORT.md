@@ -13,3 +13,8 @@
 
 See the accompanying documents for granular data tables and evolution notes.
 
+## Reference Materials
+- Spatial/OOB verification logs: `docs/archive/2025_cleanup/llvm17-port/archive/OOB_DEBUGGING_REPORT.md`
+- Historical performance deep dives: `docs/archive/2025_cleanup/llvm17-port/archive/FINAL_PERFORMANCE_RESULTS.md`
+- Milestone-by-milestone narrative: `docs/archive/2025_cleanup/llvm17-port/report_resources/MILESTONE_SUMMARY.md`
+

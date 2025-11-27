@@ -4,7 +4,7 @@
 
 | Benchmark | Input | Sequential (α best) | MoveC (β best) | Catamaran (γ best) | Speedup vs MoveC | Notes |
 |-----------|-------|---------------------|----------------|--------------------|------------------|-------|
-| 2mm | 1024×1024 | 6.78 s | 13.96 s | **13.03 s** | **+6.7 %** | THP=always cuts dTLB miss to 13.5 % (vs 55.6 % off). |
+| 2mm | 1024×1024 | 6.84 s | 13.57 s | **13.03 s** | **+4.0 %** | THP=always cuts dTLB miss to 13.5 % (vs 55.6 % off). |
 | atax | 4000×4000 | 0.04 s | 0.15 s | **0.15 s** | ≈0 % | Memory-bound; Catamaran parity once THP removes allocator penalty. |
 | gemver | N=4000 | 0.10 s | 0.28 s | 0.28 s | 0 % | All variants within noise; useful as correctness/data-point. |
 | jacobi-2d | T=100, N=2000 | 0.66 s | **2.83 s** | 3.77 s | −33 % | Stencil pattern still MoveC-friendly; highlights workload limits. |
