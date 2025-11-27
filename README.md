@@ -1,4 +1,6 @@
-# Catamaran: Memory Safety Acceleration System
+# Catamaran-Next
+
+_This is an evolved port of Catamaran to LLVM 17._
 
 [English below]
 
@@ -41,19 +43,19 @@ docker build -f docker/Dockerfile.llvm34 -t catamaran:llvm34 .
 ## 문서 (Documentation)
 
 ### 📘 기본 가이드
-- [설치 가이드](docs/SETUP.md) - 환경 설정 및 빌드 방법
-- [테스트 방법](docs/TESTING.md) - 예제 실행 및 성능 측정
-- [코드 구조](docs/ARCHITECTURE.md) - 주요 파일 및 코드 구조
-- [문제 해결](docs/TROUBLESHOOTING.md) - 자주 발생하는 문제 및 해결 방법
+- [설치 가이드](docs/archive/2025_cleanup/SETUP.md) - 환경 설정 및 빌드 방법
+- [테스트 방법](docs/archive/2025_cleanup/TESTING.md) - 예제 실행 및 성능 측정
+- [코드 구조](docs/archive/2025_cleanup/ARCHITECTURE.md) - 주요 파일 및 코드 구조
+- [문제 해결](docs/archive/2025_cleanup/TROUBLESHOOTING.md) - 자주 발생하는 문제 및 해결 방법
 
 ### 📊 LLVM 17 포팅 및 결과 보고서
 이 프로젝트의 핵심 성과와 기술적 상세 내용을 담은 문서들입니다.
 
-- **[최종 상태 보고서](docs/llvm17-port/FINAL_STATUS.md)** - 프로젝트 최종 결과 요약 (성공)
-- **[기술 분석: LLVM 3.4 vs 17 포인터 모델](docs/llvm17-port/LLVM34_vs_LLVM17_POINTER_MODEL.md)** - 포팅 난관 및 해결책 (Deep Copy 도입 배경)
-- [Deep Copy 구현 상세](docs/llvm17-port/DEEP_COPY_IMPLEMENTATION.md) - 핵심 기술 설명
-- [성능 측정 결과](docs/llvm17-port/PERFORMANCE_RESULTS.md) - 벤치마크 상세 결과
-- [포팅 진행 상황](docs/llvm17-port/STATUS.md) - 전체 포팅 로그 요약
+- **[최종 상태 보고서](docs/archive/2025_cleanup/llvm17-port/FINAL_STATUS.md)** - 프로젝트 최종 결과 요약 (성공)
+- **[기술 분석: LLVM 3.4 vs 17 포인터 모델](docs/archive/2025_cleanup/llvm17-port/LLVM34_vs_LLVM17_POINTER_MODEL.md)** - 포팅 난관 및 해결책 (Deep Copy 도입 배경)
+- [Deep Copy 구현 상세](docs/archive/2025_cleanup/llvm17-port/DEEP_COPY_IMPLEMENTATION.md) - 핵심 기술 설명
+- [성능 측정 결과](docs/archive/2025_cleanup/llvm17-port/PERFORMANCE_RESULTS.md) - 벤치마크 상세 결과
+- [포팅 진행 상황](docs/archive/2025_cleanup/llvm17-port/STATUS.md) - 전체 포팅 로그 요약
 
 ## LLVM 17 테스트 결과 (2025-11-26)
 
@@ -87,16 +89,16 @@ Catamaran is a system that parallelizes memory safety checks (MoveC, ASAN, etc.)
 ## Documentation
 
 ### Guides
-- [Installation Guide](docs/SETUP.md)
-- [Testing Guide](docs/TESTING.md)
-- [Code Structure](docs/ARCHITECTURE.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Installation Guide](docs/archive/2025_cleanup/SETUP.md)
+- [Testing Guide](docs/archive/2025_cleanup/TESTING.md)
+- [Code Structure](docs/archive/2025_cleanup/ARCHITECTURE.md)
+- [Troubleshooting](docs/archive/2025_cleanup/TROUBLESHOOTING.md)
 
 ### Porting Report & Resources
-- **[Final Status Report](docs/llvm17-port/FINAL_STATUS.md)** - Summary of achievements
-- **[Technical Analysis: LLVM 3.4 vs 17](docs/llvm17-port/LLVM34_vs_LLVM17_POINTER_MODEL.md)** - Key technical challenges & Deep Copy
-- [Deep Copy Implementation](docs/llvm17-port/DEEP_COPY_IMPLEMENTATION.md) - Core solution details
-- [Performance Results](docs/llvm17-port/PERFORMANCE_RESULTS.md) - Benchmark data
+- **[Final Status Report](docs/archive/2025_cleanup/llvm17-port/FINAL_STATUS.md)** - Summary of achievements
+- **[Technical Analysis: LLVM 3.4 vs 17](docs/archive/2025_cleanup/llvm17-port/LLVM34_vs_LLVM17_POINTER_MODEL.md)** - Key technical challenges & Deep Copy
+- [Deep Copy Implementation](docs/archive/2025_cleanup/llvm17-port/DEEP_COPY_IMPLEMENTATION.md) - Core solution details
+- [Performance Results](docs/archive/2025_cleanup/llvm17-port/PERFORMANCE_RESULTS.md) - Benchmark data
 
 ## Test Results (LLVM 17)
 
@@ -116,7 +118,7 @@ Catamaran is a system that parallelizes memory safety checks (MoveC, ASAN, etc.)
 ```
 Catamaran_artifact_issta23/
 ├── Catamaran-llvm-3.4/      # LLVM 3.4 version
-├── Catamaran-llvm-17/       # LLVM 17 version (ported)
+├── Catamaran-Next/          # LLVM 17 version (ported)
 ├── Catamaran-llvm-3.5.2/    # LLVM 3.5.2 version (for ASAN)
 ├── docker/                  # Docker files
 ├── scripts/                 # Build and run scripts

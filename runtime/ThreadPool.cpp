@@ -8,6 +8,7 @@
 #include <thread>
 #include <vector>
 #include <cstring>
+#include <condition_variable>
 
 #include <unistd.h>
 
@@ -54,7 +55,6 @@ struct EnvSlab {
             }
             capacity = size;
             current_offset = 0;
-            // DEBUG(cerr << "EnvSlab initialized: " << size << " bytes\n");
         }
     }
 
@@ -68,8 +68,6 @@ struct EnvSlab {
         size_t aligned_size = (size + 7) & ~7;
         
         if (current_offset + aligned_size > capacity) {
-            fprintf(stderr, "EnvSlab overflow! Need %lu, have %lu left. Falling back to malloc.\n", 
-                    aligned_size, capacity - current_offset);
             // Fallback to malloc if slab is full (should be rare)
             return malloc(size);
         }
@@ -94,11 +92,8 @@ extern "C" {
         // Ensure initialized (lazy init)
         if (!mainThreadSlab.buffer) {
             mainThreadSlab.init(SLAB_SIZE);
-            fprintf(stderr, "DEBUG: Slab initialized: %p\n", mainThreadSlab.buffer);
         }
-        void* ptr = mainThreadSlab.alloc(size);
-        fprintf(stderr, "DEBUG: Alloc size %lu -> %p (offset %lu)\n", size, ptr, mainThreadSlab.current_offset);
-        return ptr;
+        return mainThreadSlab.alloc(size);
     }
     
     // Helper to reset slab (can be exposed if needed, but we'll call it in wait())
@@ -121,18 +116,8 @@ extern "C" {
                 d[i] = s[i];
             }
             
-            // Debug metadata content (assuming __RV_pmd layout: { ptr, ptr, ptr, i8 })
-            if (size >= 32) {
-                unsigned long* lptr = (unsigned long*)dest;
-                unsigned char* bptr = (unsigned char*)dest;
-                unsigned long* slptr = (unsigned long*)src;
-                unsigned char* sbptr = (unsigned char*)src;
-                
-                fprintf(stderr, "DEBUG: Meta Copy: Base=0x%lx, Bound=0x%lx, Key=0x%lx, Stat=%d\n", 
-                    lptr[0], lptr[1], lptr[2], bptr[24]);
-                fprintf(stderr, "DEBUG: Src Meta:  Base=0x%lx, Bound=0x%lx, Key=0x%lx, Stat=%d\n", 
-                    slptr[0], slptr[1], slptr[2], sbptr[24]);
-            }
+            (void)dest;
+            (void)src;
         }
     }
 }
@@ -410,7 +395,9 @@ struct Job {
 }
 
 // do not look/modify j or stop unless you hold m
-static void do_work(Job *j, mutex *m, atomic<bool> *valid, bool *stop, bool * available) {
+static void do_work(Job *j, mutex *m, atomic<bool> *valid, bool *stop,
+                    bool *available, condition_variable *jobReady,
+                    condition_variable *jobDone) {
   // DEBUG(console_mutex.lock());
   // DEBUG(cerr << "do_work() by " << this_thread::get_id() << "\n");
   // DEBUG(console_mutex.unlock());
@@ -423,29 +410,22 @@ static void do_work(Job *j, mutex *m, atomic<bool> *valid, bool *stop, bool * av
   assert(valid);
   assert(stop);
 
-  bool shutdown;
-  do {
-    // lock m to prevent changes to j and stop
-    unique_lock<mutex> l(*m);
+  while (true) {
+    unique_lock<mutex> workerLock(*m);
+    jobReady->wait(workerLock, [&] { return *stop || valid->load(); });
 
-    // check if we've been told to shutdown
-    shutdown = *stop;
-
-    // cerr << "199---\n";
-    // check if we've been given a job
-    if (valid->load()) {
-      // do the work
-      call_with_args(j->num_args, j->f, j->args);
-      
-      // tell the ThreadPool that we did the work
-      valid->store(false);
-      *available = true;
-    } else {
-      // give another thread a chance
-      l.unlock();
-      this_thread::yield();
+    if (*stop) {
+      break;
     }
-  } while (!shutdown);
+
+    workerLock.unlock();
+    call_with_args(j->num_args, j->f, j->args);
+    workerLock.lock();
+
+    valid->store(false, memory_order_release);
+    *available = true;
+    jobDone->notify_all();
+  }
 }
 
 namespace {
@@ -457,6 +437,10 @@ class ThreadPool {
   atomic<bool> hasJobs[numThreads];
   bool available[numThreads];
   mutex available_mutex;
+  condition_variable jobReady[numThreads];
+  condition_variable jobDone[numThreads];
+
+  void markThreadBusy(unsigned i);
 
 public:
   ThreadPool();
@@ -565,8 +549,14 @@ ThreadPool::ThreadPool() {
     stops[i] = false;
     hasJobs[i] = false;
     available[i] = true;
-    threads[i] =
-        thread{ &do_work, &jobs[i], &mutexes[i], &hasJobs[i], &stops[i], &available[i]};
+    threads[i] = thread{&do_work,
+                        &jobs[i],
+                        &mutexes[i],
+                        &hasJobs[i],
+                        &stops[i],
+                        &available[i],
+                        &jobReady[i],
+                        &jobDone[i]};
   }
 }
 
@@ -584,12 +574,19 @@ ThreadPool::~ThreadPool() {
     mutexes[i].lock();
     stops[i] = true;
     mutexes[i].unlock();
+    jobReady[i].notify_all();
   }
 
   // join on all threads
   for (auto &t : threads) {
     t.join();
   }
+}
+
+void ThreadPool::markThreadBusy(unsigned i) {
+  hasJobs[i].store(true, memory_order_release);
+  available[i] = false;
+  jobReady[i].notify_one();
 }
 
 // returns positive ThreadID if successful, or negative value if unsuccessful
@@ -633,12 +630,7 @@ unsigned ThreadPool::assignJob(const unsigned num_args, void *arg1, void *arg2,
       j.args[6] = arg7;
       j.args[7] = arg8;
     
-      // signal to the thread that it has a job to do
-      hasJobs[i] = true;
-
-      // note that the thread isn't available
-      available[i] = false;
-
+      markThreadBusy(i);
       // tell the caller the threadID of the thread
       return i;
     }
@@ -663,8 +655,7 @@ unsigned ThreadPool::assignJob9(unsigned num_args, void *arg1, void *arg2, void 
       j.args[0] = arg1;j.args[1] = arg2;j.args[2] = arg3;j.args[3] = arg4;
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -686,8 +677,7 @@ unsigned ThreadPool::assignJob10(unsigned num_args, void *arg1, void *arg2, void
       j.args[0] = arg1;j.args[1] = arg2;j.args[2] = arg3;j.args[3] = arg4;
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -710,8 +700,7 @@ unsigned ThreadPool::assignJob11(unsigned num_args, void *arg1, void *arg2, void
       j.args[0] = arg1;j.args[1] = arg2;j.args[2] = arg3;j.args[3] = arg4;
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -734,8 +723,7 @@ unsigned ThreadPool::assignJob12(unsigned num_args, void *arg1, void *arg2, void
       j.args[0] = arg1;j.args[1] = arg2;j.args[2] = arg3;j.args[3] = arg4;
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -758,8 +746,7 @@ unsigned ThreadPool::assignJob13(unsigned num_args, void *arg1, void *arg2, void
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -783,8 +770,7 @@ unsigned ThreadPool::assignJob14(unsigned num_args, void *arg1, void *arg2, void
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -808,8 +794,7 @@ unsigned ThreadPool::assignJob15(unsigned num_args, void *arg1, void *arg2, void
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -835,8 +820,7 @@ unsigned ThreadPool::assignJob16(unsigned num_args, void *arg1, void *arg2, void
       j.args[4] = arg5;j.args[5] = arg6;j.args[6] = arg7;j.args[7] = arg8;
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -862,8 +846,7 @@ unsigned ThreadPool::assignJob17(unsigned num_args, void *arg1, void *arg2, void
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -889,8 +872,7 @@ unsigned ThreadPool::assignJob18(unsigned num_args, void *arg1, void *arg2, void
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;j.args[17] = arg18;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -916,8 +898,7 @@ unsigned ThreadPool::assignJob19(unsigned num_args, void *arg1, void *arg2, void
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;j.args[17] = arg18;j.args[18] = arg19;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -943,8 +924,7 @@ unsigned ThreadPool::assignJob20(unsigned num_args, void *arg1, void *arg2, void
       j.args[8] = arg9;j.args[9] = arg10;j.args[10] = arg11;j.args[11] = arg12;
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;j.args[17] = arg18;j.args[18] = arg19;j.args[19] = arg20;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -972,8 +952,7 @@ unsigned ThreadPool::assignJob21(unsigned num_args, void *arg1, void *arg2, void
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;j.args[17] = arg18;j.args[18] = arg19;j.args[19] = arg20;
       j.args[20] = arg21;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -1001,8 +980,7 @@ unsigned ThreadPool::assignJob22(unsigned num_args, void *arg1, void *arg2, void
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;j.args[17] = arg18;j.args[18] = arg19;j.args[19] = arg20;
       j.args[20] = arg21;j.args[21] = arg22;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -1030,8 +1008,7 @@ unsigned ThreadPool::assignJob23(unsigned num_args, void *arg1, void *arg2, void
       j.args[12] = arg13;j.args[13] = arg14;j.args[14] = arg15;j.args[15] = arg16;
       j.args[16] = arg17;j.args[17] = arg18;j.args[18] = arg19;j.args[19] = arg20;
       j.args[20] = arg21;j.args[21] = arg22;j.args[22] = arg23;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -1061,8 +1038,7 @@ unsigned ThreadPool::assignJob26(unsigned num_args, void *arg1, void *arg2, void
       j.args[16] = arg17;j.args[17] = arg18;j.args[18] = arg19;j.args[19] = arg20;
       j.args[20] = arg21;j.args[21] = arg22;j.args[22] = arg23;j.args[23] = arg24;
       j.args[24] = arg25;j.args[25] = arg26;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -1094,8 +1070,7 @@ unsigned ThreadPool::assignJob33(unsigned num_args, void *arg1, void *arg2, void
       j.args[24] = arg25;j.args[25] = arg26;j.args[26] = arg27;j.args[27] = arg28;
       j.args[28] = arg29;j.args[29] = arg30;j.args[30] = arg31;j.args[31] = arg32;
       j.args[32] = arg33;
-      hasJobs[i] = true;
-      available[i] = false;
+      markThreadBusy(i);
       return i;
     }
   }
@@ -1117,10 +1092,10 @@ void ThreadPool::join(unsigned threadID) {
   // assert(threadID < numThreads);
   if (threadID >= numThreads) return;
 
-  // wait until the thread which was supposed to do our job has finished
-  while (hasJobs[threadID]) {
-    this_thread::yield();
-  }
+  unique_lock<mutex> workerLock(mutexes[threadID]);
+  jobDone[threadID].wait(workerLock,
+                         [&] { return !hasJobs[threadID].load(memory_order_acquire); });
+  workerLock.unlock();
 
   // aquire the available_mutex before changing available
   auto l = unique_lock<mutex>(available_mutex);
