@@ -1,8 +1,8 @@
 #include "LoopsMovec.h"
 
-#define ENABLELOOP 1
+#define ENABLELOOP 0
 
-#define ENABLELOOPFREE 0
+#define ENABLELOOPFREE 1
 
 #define ZYYDEBUG 1
 
@@ -801,17 +801,17 @@ bool LoopsMovec::runOnModule(Module &M) {
 
     #if ENABLELOOPFREE
     //determine basicblocks in loop code
-    std::vector<LoopStructure *> * loopStructures = this->getLoopStructures();
-    std::unordered_set<BasicBlock *> allLoopBasicBlocks;
+    std::vector<LoopStructure *> * loopStructuresLF = this->getLoopStructures();
+    std::unordered_set<BasicBlock *> allLoopBasicBlocksLF;
     
     //loop free opt
     //loop free analysis
     std::vector<LoopFreeTask *> loopFreeTasks;
     uint32_t loopFreeId = 0;
     
-    if (loopStructures->size() != 0) {
-        auto forest = this->organizeLoopsInTheirNestingForest(*loopStructures);
-        delete loopStructures;
+    if (loopStructuresLF->size() != 0) {
+        auto forest = this->organizeLoopsInTheirNestingForest(*loopStructuresLF);
+        delete loopStructuresLF;
         
         auto trees = forest->getTrees();
         for (auto treeIt = trees.rbegin(); treeIt != trees.rend(); ++treeIt) {
@@ -821,12 +821,12 @@ bool LoopsMovec::runOnModule(Module &M) {
             for (auto loop : loopsToParallelize) {
                 auto ls = loop->getLoopStructure();
                 for (auto BB : ls->getBasicBlocks()) {
-                    allLoopBasicBlocks.insert(BB);
+                    allLoopBasicBlocksLF.insert(BB);
                 }
             }
         }
     } else {
-        delete loopStructures;
+        delete loopStructuresLF;
     }
 
 
@@ -859,7 +859,7 @@ bool LoopsMovec::runOnModule(Module &M) {
             
             // std::unordered_map<BasicBlock *, std::unordered_set<Instruction *>> safeCheckInNonLoopBB;
 
-            if (allLoopBasicBlocks.count(&BB) > 0) continue;
+            if (allLoopBasicBlocksLF.count(&BB) > 0) continue;
             #if ZYYDEBUG
             errs() << "considering BB: " << BB << "\n";
             #endif

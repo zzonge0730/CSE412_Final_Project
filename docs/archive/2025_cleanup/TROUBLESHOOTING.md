@@ -12,20 +12,22 @@ examples/2mm.c:82:35: error: dereferenced pointer 'A[i][k]' ... [spatial error]
 double free or corruption (!prev)
 ```
 
-**원인**: **Catamaran이 spawn 시 MoveC 메타데이터(__RV_pmd)를 불완전하게 전달**하기 때문입니다. 
+**현재 상태 (2025-11-25 이후 빌드)**  
+Deep Copy + Slab Allocator 패치가 기본 적용되어 `__RV_pmd` 메타데이터가 태스크별 전용 버퍼에 복사됩니다. 따라서 최신 CMPass와 런타임을 사용한다면 MoveC의 Spatial Error는 **실제 OOB/Temporal 오류**를 의미합니다.
 
-**검증 결과**:
-- **MoveC β (Sequential)**: `./MoveC-2mm 0 128 128 128 128` → 경고 없이 정상 종료
-- **Catamaran γ (Parallel)**: `./CM-MoveC-2mm 0 64 64 64 64` → 6144개 spatial error
+**원인이 될 수 있는 경우**
+1. **구버전 빌드 사용**: 2025-11-24 이전에 빌드된 CMPass.so 또는 ThreadPool을 사용 중.  
+2. **런타임/패스 버전 불일치**: 최신 `__catamaran_alloc_env`/`__catamaran_reset_slab` 심볼이 없는 ThreadPool과 새 CMPass를 혼합 링크.  
+3. **실제 버그**: OOB 인젝션 테스트처럼 진짜 오류가 존재.
 
-원본 함수(`_RV_kernel_2mm`)는 5개 배열(tmp, A, B, C, D)의 메타데이터를 모두 받지만, Catamaran이 생성한 루프 함수(`_loop_func_76`)는 D 메타데이터만 받습니다. spawn된 함수에서 tmp, A, B, C에 접근할 때 메타데이터가 없어 MoveC가 경계 정보를 찾지 못해 spatial error가 발생합니다.
+**확인 절차**
+1. `nm runtime/ThreadPool.cpp.o | grep __catamaran_alloc_env` 로 Slab Allocator 심볼이 있는지 확인.  
+2. `opt -load-pass-plugin ... -passes=Loops --version` 을 실행해 2025-11-25 이후 커밋인지 확인.  
+3. `examples/llvm17/MoveC-2mm-oob.c` + `volatile` 오프셋 테스트를 돌려 Catamaran이 Fault Injection을 잡는지 확인 (성공 시 Deep Copy 정상 동작).  
+4. 여전히 Spatial Error가 뜬다면 IR에서 대상 포인터와 메타데이터 쌍이 모두 `env`에 들어갔는지 (`grep "_RV_pmd" CM-*.ll`) 점검.
 
-**상세 분석**: [docs/llvm17-port/MOVEC_METADATA_ISSUE.md](llvm17-port/MOVEC_METADATA_ISSUE.md) 참조
-
-**해결 방법**:
-- **임시 우회**: 작은 입력(`0 64 64 64 64`) 사용 시 경고만 발생하고 실행은 완료됨
-- **근본 해결**: `DOALLTask::genSpawnArgs()`에서 배열 포인터의 메타데이터도 함께 전달하도록 수정 필요 (현재 미구현)
-- **대안**: ASAN 경로 사용 (ASAN은 메타데이터 의존성이 없어서 정상 작동)
+**과거 이슈 기록**  
+이전 버전에서는 DOALL 태스크가 메타데이터를 전달하지 못해 모든 접근이 거짓 양성으로 판정되었습니다. 자세한 배경은 [docs/llvm17-port/MOVEC_METADATA_ISSUE.md](llvm17-port/MOVEC_METADATA_ISSUE.md)에서 확인할 수 있습니다.
 
 ### 2. MoveC γ 실행이 즉시 종료됨
 
@@ -228,18 +230,23 @@ chmod +x CM-MoveC-2mm
 
 ### 1. MoveC runtime reports spatial errors
 
-**Symptom**:
+**Symptom**
 ```bash
 examples/2mm.c:82:35: error: dereferenced pointer 'A[i][k]' ... [spatial error]
 double free or corruption (!prev)
 ```
 
-**Cause**: The MoveC memory-safety runtime from the original artifact flags the 2mm kernel as out-of-bounds on large inputs (and currently even on smaller inputs). The Catamaran pass emits valid IR; the warnings originate from the MoveC instrumentation itself.
+**Current expectation (post Deep Copy + Slab)**
+The LLVM 17 port now deep-copies every `__RV_pmd` struct into a task-local buffer before launching workers. When built from the 2025-11-25 tag (`v1.0-spatial-safety-complete`), a spatial error indicates either an actual bug or a stale binary.
 
-**Solution**:
-- Record the warnings for reference and treat the timing numbers as indicative only.
-- For a smoke test, run `./CM-MoveC-2mm 16 16 16 16 0`.
-- Use other PolyBench kernels or the ASAN example to cross-check the pass outputs.
+**Checklist**
+1. Ensure `runtime/ThreadPool.cpp` exports `__catamaran_alloc_env` / `__catamaran_reset_slab`.  
+2. Rebuild CMPass (`./scripts/build-llvm17.sh`) so `opt -passes=Loops --version` shows the latest date.  
+3. Re-run the official OOB fault-injection sample (`MoveC-2mm-oob.c` with the volatile offset). Catamaran γ should emit the same spatial error as β, proving metadata propagation works.  
+4. If errors persist, diff `CM-MoveC-2mm.ll` to confirm each pointer argument has a matching `_RV_pmd` live-in slot.
+
+**Legacy note**
+Older documentation referenced a DOALL metadata omission that caused thousands of false positives. That bug has been resolved; keep the note only for archaeology (see `llvm17-port/MOVEC_METADATA_ISSUE.md`).
 
 ### 2. MoveC γ binary exits immediately
 

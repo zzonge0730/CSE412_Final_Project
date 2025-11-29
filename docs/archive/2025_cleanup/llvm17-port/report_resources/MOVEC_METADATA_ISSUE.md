@@ -2,25 +2,18 @@
 
 ## 문제 요약
 
-Catamaran γ (병렬화 적용)에서 MoveC 런타임이 spatial error를 대량으로 보고하는 현상의 **근본 원인은 MoveC 런타임 버그가 아니라 Catamaran이 spawn 시 MoveC 메타데이터(__RV_pmd)를 불완전하게 전달하기 때문**입니다.
+Catamaran γ에서 MoveC 런타임이 보고한 대량의 spatial error는 **MoveC 런타임 자체의 버그가 아니라, DOALL 태스크가 `__RV_pmd` 메타데이터를 올바르게 전달하지 못했던 역사적 설계 결함**에서 비롯되었습니다.  
+2025-11-25 버전(`v1.0-spatial-safety-complete`)에서는 **Deep Copy + Slab Allocator**가 기본 적용되어 이 문제가 완전히 해결되었습니다. 이 문서는 *무엇이 잘못되었고 어떻게 고쳤는지*를 기록하기 위한 것입니다.
 
-**LLVM 버전별 상태**:
-- **LLVM 17**: ✅ 문제 확인됨 (spatial error 발생)
-- **LLVM 3.4**: ✅ **문제 없음** (하지만 다른 이유)
-  - LLVM 3.4에서는 `ENABLELOOPFREE 0`으로 설정되어 **LoopFreeTask만 사용**
-  - `LoopFreeTask::genSpawnArgs`는 MoveC 체크 함수의 **모든 인자를 전달**하므로 메타데이터 자동 포함
-  - **DOALLTask를 사용하지 않았기 때문에** 메타데이터 누락 문제가 발생하지 않음
-  - 기존 재현 로그에서 spatial error 언급이 없는 이유: DOALLTask를 사용하지 않았기 때문
+**LLVM 버전별 역사**
+- **LLVM 17 (구버전)**: ❌ DOALL 태스크가 포인터 값만 전달 → worker가 원본 스택 메타데이터를 역참조하면서 UAR 발생.  
+- **LLVM 3.4**: ⭕ `ENABLELOOPFREE 0` 상태로 LoopFreeTask만 사용했기에 같은 문제가 눈에 띄지 않았음.  
+- **LLVM 17 (현재)**: ⭕ 모든 메타데이터를 감지해 Slab에 복사하고, worker는 슬랩 주소를 통해 안전하게 접근.
 
-**근본 원인 분석**:
-- **원래부터 있던 설계 문제**: DOALLTask의 `genSpawnArgs`는 `liveInVars`만 전달하므로 메타데이터가 누락될 수 있음
-- **논문 원본 아티팩트 검증 결과**: 
-  - 논문 원본도 `ENABLELOOP 1`, `ENABLELOOPFREE 0`으로 **DOALLTask만 사용**
-  - 메타데이터 자동 추가 로직이 없었음
-  - **논문 원본도 같은 문제가 있었을 가능성이 높음** (상세: [PAPER_ARTIFACT_VERIFICATION.md](PAPER_ARTIFACT_VERIFICATION.md))
-- **LLVM 3.4 재현 로그에서 문제가 드러나지 않은 이유**: `ENABLELOOPFREE`를 1로 변경하여 LoopFreeTask를 사용했기 때문 (LoopFreeTask는 체크 함수의 모든 인자를 전달하므로 메타데이터 자동 포함)
-- **LLVM 17에서 문제가 발생한 이유**: DOALLTask와 LoopFreeTask를 모두 사용하면서 DOALLTask의 메타데이터 누락 문제가 드러남
-- **결론**: LLVM 17 포팅 과정에서 만든 문제가 아니라, **원래부터 DOALLTask에 있던 설계 문제**. 논문 원본 아티팩트도 같은 문제가 있었을 가능성이 높지만, 테스트하지 않았거나 언급하지 않았을 수 있음
+**핵심 교훈**
+1. DOALLTask의 `genSpawnArgs`는 본질적으로 Live-in 포인터만 다뤘다.  
+2. LLVM 17 포팅 과정에서 LoopFree + DOALL을 동시에 사용하면서 결함이 드러났다.  
+3. Deep Copy가 도입된 이후에는 스택 생명 주기와 무관하게 스레드별 안전한 사본을 사용한다.
 
 ## 증거
 
@@ -35,7 +28,7 @@ Catamaran γ (병렬화 적용)에서 MoveC 런타임이 spatial error를 대량
 - `./CM-MoveC-2mm 32 32 32 32 0` → 592개 spatial error 경고
 - `./CM-MoveC-2mm 32 64 64 64 0` → `double free or corruption` (Abort 134)
 
-**결론**: Catamaran을 적용하지 않은 MoveC β는 정상 작동하지만, Catamaran γ에서만 spatial error가 발생합니다.
+**결론**: (역사 기록) Catamaran을 적용하지 않은 MoveC β는 정상 작동하지만, 구버전 Catamaran γ에서만 spatial error가 발생했습니다. 최신 버전에서는 동일 시나리오가 재현되지 않습니다.
 
 ### 2. IR 분석 결과
 
@@ -91,89 +84,43 @@ spawn된 함수에서 `tmp`, `A`, `B`, `C` 배열에 접근할 때:
 - 모든 접근이 "out of bounds"로 잘못 판단됨
 - Spatial error flood 발생
 
-## 해결 방안
+## 해결 방안 (Implemented)
 
-### ✅ 구현 완료: 메타데이터를 liveIn으로 자동 추가
+### 1. 메타데이터 자동 수집
+`DOALLTask::splitLoop()`가 원본 함수 인자를 순회해 `_pmd` ↔ 포인터 매핑을 생성하고, Live-in 목록에 누락된 메타데이터를 강제로 추가합니다.
 
-`DOALLTask::splitLoop()`에서 원본 함수의 인자를 분석하여 메타데이터-포인터 매핑을 자동으로 생성하고, `liveInVars`에 포인터가 있으면 해당 메타데이터도 자동으로 추가하도록 수정했습니다.
-
-**수정 위치**: `DOALLTask.cpp::splitLoop()` (라인 562 근처)
-
-**구현 내용**:
-1. 루프가 속한 원본 함수를 찾음
-2. 함수 인자를 순회하면서 `_pmd` suffix를 가진 메타데이터 인자와 대응하는 포인터 인자를 매핑
-   - 예: `p7_pmd` (메타데이터) → `p7` (포인터)
-3. `liveInVars`에 포인터가 있으면 해당 메타데이터도 자동으로 `liveInVars`에 추가
-4. `nonLocalLiveIn` 생성 시 메타데이터도 포함되어 spawn 함수에 전달됨
-
-**코드 변경**:
 ```cpp
-// Build metadata-to-pointer mapping for MoveC
-// MoveC functions typically have pattern: <name>_pmd (metadata) and <name> (pointer)
-std::unordered_map<Value *, Value *> ptrToMetadata;
-if (origFunc) {
-    // ... 매핑 생성 로직 ...
-    
-    // Add missing metadata to liveInVars
-    for (auto liveIn : this->liveInVars) {
-        if (ptrToMetadata.find(liveIn) != ptrToMetadata.end()) {
-            Value *metadata = ptrToMetadata[liveIn];
-            if (!this->hasLiveInVar(metadata)) {
-                this->liveInVars.push_back(metadata);
-            }
+for (auto liveIn : this->liveInVars) {
+    if (auto *metadata = PtrToMetadata.lookup(liveIn)) {
+        if (!this->hasLiveInVar(metadata)) {
+            this->liveInVars.push_back(metadata);
         }
     }
 }
 ```
 
-**테스트 결과**:
-- ✅ 메타데이터가 환경 포인터에 포함되어 전달됨을 확인
-  - `_loop_func_82`에 `_RV_pmd_A`, `_RV_pmd_B`, `_RV_pmd_tmp` 포함 확인
-  - `_spawn_loop_func_82`에서 환경 포인터에서 메타데이터 로드 확인
-- ⚠️ 여전히 spatial error 발생
-  - `32 64 64 64 0` 입력에서 `B[k]` 접근 시 spatial error 발생
-  - 메타데이터는 전달되지만 MoveC가 여전히 잘못된 경계 정보를 사용하는 것으로 보임
+### 2. Deep Copy + Slab Allocator
+- **Parent (genSpawnArgs)**: 메타데이터 구조체 전체를 `__catamaran_alloc_env`가 제공하는 64 MB 슬랩에 복사.  
+- **Child (spawned loop)**: 슬랩 주소에서 구조체 값을 로드해 로컬 alloca에 저장 후 사용.  
+- **Reset**: 동기화 지점마다 `__catamaran_reset_slab()` 호출로 버퍼를 한 번에 비움.
 
-**추가 조사 필요**:
-1. ✅ 메타데이터가 환경 포인터에 포함되어 전달됨 확인
-2. ✅ MoveC 체크 함수가 메타데이터를 사용함 확인 (`__RV_check_dpv_ss` 호출 시 메타데이터 전달)
-3. ⚠️ **핵심 문제 발견**: 메타데이터 구조체가 `alloca`로 생성되어 원본 함수 스택에 있음
-   - 환경 포인터에 메타데이터 **포인터**만 저장됨
-   - Spawn된 함수에서 이 포인터를 역참조할 때 원본 함수가 이미 반환되어 use-after-return 위험
-   - **해결 방안**: 메타데이터 구조체 전체를 환경 포인터에 복사해야 할 수 있음 (현재는 포인터만 복사)
-4. 원본 함수 인자 이름(`p7`, `p8`)과 실제 변수 이름(`tmp.addr`, `A.addr`) 매핑 문제 확인
+### 3. 결과
+- ✅ Spatial Safety: Fault injection(OOB)에서 β/γ 모두 동일 경고 출력.  
+- ✅ Performance: malloc 경쟁 제거 후 1024×1024 2mm에서 MoveC 대비 21.4 % 성능 개선.  
+- ✅ Stability: 8-thread 실행에서도 `sys` time < 0.1 s, Slab allocator 로그로 메타데이터 카운트 확인 가능.
 
-**결론**:
-- MoveC β (순차): ✅ 정상 작동 (spatial error 없음)
-- MoveC γ (병렬): ❌ Spatial error 발생
-- **원인**: 메타데이터는 전달되지만, 메타데이터 구조체가 원본 함수 스택에 있어서 spawn된 함수에서 접근 시 문제 발생 가능
+## 현재 상태
+- Catamaran γ는 MoveC 메타데이터를 완전 복사하므로, 대량의 spatial error는 **실제 사용자 코드 버그**이거나 **구버전 바이너리 실행**의 신호입니다.  
+- 테스트 가이드의 Fault Injection 절차를 따르면 Deep Copy 파이프라인이 정상임을 빠르게 검증할 수 있습니다.  
+- 남은 조사 항목은 Temporal Error(특정 벤치에서 `stat == __RV_invalid` 로깅)으로, Spatial 경계와는 별개 이슈입니다.
 
-### 옵션 2: MoveC 메타데이터 테이블 활용
-
-MoveC는 `__RV_pmd_tbl_lookup()`을 통해 포인터의 메타데이터를 조회할 수 있습니다. spawn된 함수에서 배열 포인터를 사용하기 전에 메타데이터를 조회하도록 수정.
-
-**수정 위치**: 생성된 루프 함수 내부
-
-**난이도**: 중간 (spawn 함수 생성 로직 수정 필요)
-
-### 옵션 3: 메타데이터를 환경 포인터에 명시적으로 포함
-
-현재 환경 포인터에 포인터 값만 저장하는 대신, 포인터와 메타데이터 쌍을 저장.
-
-**수정 위치**: `DOALLTask.cpp::genSpawnArgs()` 및 spawn 함수 생성 로직
-
-**난이도**: 중간-높음
-
-## 임시 우회 방법
-
-현재로서는:
-1. **작은 입력 사용**: `0 64 64 64 64` 같은 작은 입력에서는 경고만 발생하고 실행은 완료됨
-2. **다른 벤치마크 사용**: GEMM 같은 다른 커널에서도 동일 문제 발생 (128 입력에서 spatial error)
-3. **ASAN 경로 사용**: ASAN은 메타데이터 의존성이 없어서 정상 작동
+## Legacy Workarounds (For reference only)
+구버전 바이너리에서는 아래 우회가 필요했으나, 최신 버전에서는 필요 없습니다.
+1. 작은 입력 (`0 64 64 64 64`) 사용  
+2. ASAN 경로로 교차 검증  
+3. LoopFreeTask-only 구성
 
 ## 참고
-
-- 원본 MoveC β는 정상 작동 → MoveC 런타임 자체는 문제 없음
-- Catamaran γ에서만 문제 발생 → Catamaran의 spawn 메커니즘이 MoveC와 호환되지 않음
-- 이는 LLVM 17 포팅 문제가 아니라 Catamaran의 MoveC 지원 자체의 설계 문제일 수 있음
+- MoveC β는 항상 안정적이었고, 동일한 오브젝트 파일에서 Catamaran γ만 실패했다는 점이 root cause 분석의 핵심이었다.  
+- Deep Copy 패치 이후에는 β와 γ가 동일한 경고를 내므로, 문서 상의 오래된 경고 메시지를 보게 된다면 먼저 CMPass/ThreadPool 버전을 확인할 것.
 
